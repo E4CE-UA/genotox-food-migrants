@@ -1,0 +1,8 @@
+cell,n,meaning
+both call it genotoxic,79.0,"the two methods agree, positive"
+neither does,4321.0,"the two methods agree, negative"
+alert only,392.0,"rules fire, model does not"
+model only,217.0,"model fires, rules do not"
+candidates compared,5009.0,
+agreement (%),87.8,
+Cohen's kappa,0.144,agreement above chance

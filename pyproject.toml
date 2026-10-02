@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genotox-food-migrants"
+version = "0.1.0"
+description = "Identity-weighted genotoxicity scoring for GC-MS features of food-contact migrants"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "YOUR NAME" }]
+keywords = ["cheminformatics", "genotoxicity", "GC-MS", "QSAR", "marimo"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+# Lower bounds, not pins: requirements.txt holds the exact versions the
+# reported numbers were produced with, and this file only has to let the
+# package install alongside whatever else the environment already has.
+dependencies = [
+    "lightgbm>=4.7",
+    "matplotlib>=3.10",
+    "numpy>=2.0",
+    "openpyxl>=3.1",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "rdkit>=2024.3",
+    "scikit-learn>=1.5",
+    "scipy>=1.14",
+]
+
+[project.optional-dependencies]
+notebook = ["marimo>=0.24", "anywidget>=0.9"]
+
+[project.urls]
+Repository = "https://github.com/E4CE-UA/genotox-food-migrants"
+
+# The importable package is literally `src`, because that is what the notebook
+# imports (`from src import chemistry`). It works, and it is also a top-level
+# name generic enough to collide with another installed project some day. The
+# fix is to rename the directory to `genotox/` and update the notebook's import
+# block in one edit; leaving it as `src` is a deliberate choice to not touch
+# working imports days before a deadline.
+# `data` is shipped as an importable top-level package purely so its files
+# travel with the wheel: `pip install git+.../genotox-food-migrants` then lands
+# `data/` next to `src/`, and paths.DATA (= <install root>/data) resolves the
+# same whether the notebook runs from a clone or from an install. `data` is a
+# generic top-level name and could collide with another installed project; the
+# clean fix (a private `src/_data/`) is deferred to after the deadline for the
+# same reason `src` itself is left generic - it works and touching it now is
+# risk with no payoff before Sunday. `from src import data` still means the
+# module src/data.py; the `data` package is a different name and does not shadow
+# it.
+[tool.setuptools]
+packages = ["src", "data"]
+
+# The data files are part of what makes the notebook runnable from a clean
+# clone or a fresh install with no network, so they travel with the package
+# rather than being fetched at import. The recursive glob catches the bundled
+# MetaboLights MAFs under data/metabolights/.
+[tool.setuptools.package-data]
+data = ["*.parquet", "*.csv", "*.xlsx", "**/*.tsv", "**/*"]
+
+[tool.setuptools.exclude-package-data]
+src = ["legacy/*"]

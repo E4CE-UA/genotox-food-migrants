@@ -1,0 +1,10 @@
+.venv/
+cache/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+.DS_Store
+notebooks/__marimo__/
+repo-verify.zip
+*.zip

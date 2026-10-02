@@ -1,0 +1,8 @@
+study,features,with_formula,with_msi_level,gated (level 1),"marginalizable (formula, no level)",neither,raw levels
+MTBLS1866,251,251,0,0,251,0,-
+MTBLS627,154,104,154,105,0,0,MSI:1+MSI:4
+MTBLS522,65,65,0,0,65,0,-
+MTBLS8966,63,63,0,0,63,0,-
+MTBLS519,51,41,2,0,39,10,0+3+4+5
+MTBLS4497,44,44,0,0,44,0,-
+MTBLS892,37,37,0,0,37,0,-
