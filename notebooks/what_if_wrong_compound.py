@@ -59,7 +59,196 @@ def _(notebook_file):
         from rdkit import Chem, rdBase, RDLogger
         from rdkit.Chem import rdMolDescriptors
 
+        def _portable_identity_guards():
+            """Same audited guards as src, for a drop-in notebook on older checkouts."""
+            from types import SimpleNamespace
+
+            import numpy as np
+
+            import pandas as pd
+
+            from rdkit import Chem, rdBase
+
+            from rdkit.Chem.MolStandardize import rdMolStandardize
+
+            MAX_TAUTOMER_ATOMS = 60
+
+            STANDARDIZATION_POLICY = "single-organic-parent-v2"
+
+            _ORGANIC_ELEMENTS = {1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 34, 35, 53}
+
+            _COUNTERION_ELEMENTS = {11, 19}
+
+            RULES = ("any_positive", "majority", "consensus")
+
+            def _scope_reason(mol) -> str:
+                fragments = Chem.GetMolFrags(mol, asMols=True)
+                organic = [f for f in fragments if any(a.GetAtomicNum() == 6 for a in f.GetAtoms())]
+                if not organic:
+                    return "outside model scope: no carbon-containing parent"
+                if len(organic) > 1:
+                    return "outside model scope: multiple carbon-containing fragments"
+                for atom in mol.GetAtoms():
+                    z = atom.GetAtomicNum()
+                    if z in _ORGANIC_ELEMENTS:
+                        continue
+                    if z in _COUNTERION_ELEMENTS and atom.GetDegree() == 0 and atom.GetFormalCharge() == 1:
+                        continue
+                    return "outside model scope: unsupported element or metal complex"
+                return ""
+
+            def _inchikey(mol):
+                try:
+                    return Chem.MolToInchiKey(mol) or None
+                except Exception:
+                    return None
+
+            def standardize_mol(smi: str) -> dict:
+                """Applies the standardization cascade to a SMILES.
+
+                Returns a dict with the input and output SMILES and InChIKey, the number
+                of original fragments, whether the InChIKey changed and an incident note.
+                """
+                result = {
+                    "smiles_std": None, "inchikey_std": None, "n_orig_fragments": np.nan,
+                    "inchikey_changed": False, "ok": False, "note": "",
+                    "standardization_policy": STANDARDIZATION_POLICY,
+                    "rdkit_version": rdBase.rdkitVersion,
+                }
+                if not isinstance(smi, str) or not smi.strip():
+                    result["note"] = "no smiles"
+                    return result
+                mol = Chem.MolFromSmiles(smi)
+                if mol is None:
+                    result["note"] = "not parseable"
+                    return result
+
+                result["n_orig_fragments"] = len(Chem.GetMolFrags(mol))
+                reason = _scope_reason(mol)
+                if reason:
+                    result["note"] = reason
+                    return result
+                ik_input = _inchikey(mol)
+                try:
+                    mol = rdMolStandardize.Cleanup(mol)
+                    # Select the one organic fragment explicitly. LargestFragmentChooser
+                    # can otherwise choose a larger inorganic counterion.
+                    fragments = Chem.GetMolFrags(mol, asMols=True)
+                    organic = [f for f in fragments if any(a.GetAtomicNum() == 6 for a in f.GetAtoms())]
+                    if len(organic) != 1:
+                        result["note"] = "outside model scope after cleanup: not one organic parent"
+                        return result
+                    mol = organic[0]
+                    mol = rdMolStandardize.Uncharger().uncharge(mol)
+                    if mol.GetNumHeavyAtoms() <= MAX_TAUTOMER_ATOMS:
+                        mol = rdMolStandardize.TautomerEnumerator().Canonicalize(mol)
+                    else:
+                        result["note"] = "tautomers skipped (large molecule)"
+                except Exception as exc:
+                    result["note"] = f"standardization failed: {type(exc).__name__}"
+                    return result
+
+                ik_output = _inchikey(mol)
+                result.update(
+                    smiles_std=Chem.MolToSmiles(mol),
+                    inchikey_std=ik_output,
+                    inchikey_changed=bool(ik_input and ik_output and ik_input != ik_output),
+                    ok=ik_output is not None,
+                )
+                return result
+
+            def standardize_table(df: pd.DataFrame, smiles_col: str = "smiles",
+                                   cache_path=None) -> pd.DataFrame:
+                """Standardizes a table with an on-disk cache over the input SMILES."""
+                input_values = df[smiles_col].astype("string")
+                unique = pd.Index(input_values.dropna().unique(), name=smiles_col)
+
+                cache = pd.DataFrame()
+                if cache_path is not None and cache_path.exists():
+                    cached = pd.read_parquet(cache_path)
+                    required = {smiles_col, "standardization_policy", "rdkit_version"}
+                    if required <= set(cached.columns):
+                        cache = cached.loc[
+                            cached["standardization_policy"].eq(STANDARDIZATION_POLICY)
+                            & cached["rdkit_version"].eq(rdBase.rdkitVersion)
+                        ].set_index(smiles_col)
+                        cache = cache[~cache.index.duplicated()]
+
+                pending = unique.difference(cache.index) if len(cache) else unique
+                if len(pending):
+                    new_rows = pd.DataFrame([standardize_mol(s) for s in pending], index=pending)
+                    new_rows.index.name = smiles_col
+                    cache = pd.concat([cache, new_rows]) if len(cache) else new_rows
+                    if cache_path is not None:
+                        cache_path.parent.mkdir(parents=True, exist_ok=True)
+                        cache.reset_index().to_parquet(cache_path, index=False)
+
+                if cache.empty:
+                    cache = pd.DataFrame(columns=standardize_mol("").keys(),
+                                         index=pd.Index([], name=smiles_col))
+                return df.join(cache, on=smiles_col)
+
+            def aggregate_standardized(standardized: pd.DataFrame,
+                                       rule: str = "any_positive",
+                                       min_studies: int = 1) -> pd.DataFrame:
+                """Reconcile raw identities that map to the SAME supported organic parent.
+
+                Input is aggregate_by_substance followed by chemistry.standardize_table.
+                Sum the original conclusion counts, not the already aggregated binary
+                labels; majority/consensus must give the same result regardless of input
+                row order. Ambiguous handling has already been applied to those counts.
+                Unsupported structures stay in the input audit but never enter this table.
+                """
+                if rule not in RULES:
+                    raise ValueError(f"rule must be one of {RULES}")
+                valid = standardized.loc[
+                    standardized["ok"].fillna(False) & standardized["inchikey_std"].notna()
+                ].copy()
+                if valid.empty:
+                    return valid.assign(n_raw_identities=pd.Series(dtype=int),
+                                        raw_label_conflict=pd.Series(dtype=bool))
+                order = ["inchikey_std"] + (["inchikey"] if "inchikey" in valid else [])
+                valid = valid.sort_values(order, kind="stable")
+                g = valid.groupby("inchikey_std", sort=True)
+                # The representative metadata is deterministic; its y is overwritten below.
+                out = valid.drop_duplicates("inchikey_std").set_index("inchikey_std")
+                out[["n_studies", "n_pos", "n_neg", "n_amb"]] = g[
+                    ["n_studies", "n_pos", "n_neg", "n_amb"]
+                ].sum()
+                out["n_raw_identities"] = g.size()
+                out["raw_label_conflict"] = g["y"].nunique().gt(1)
+                y = pd.Series(pd.NA, index=out.index, dtype="Float64")
+                if rule == "any_positive":
+                    y[out["n_pos"] > 0] = 1.0
+                    y[(out["n_pos"] == 0) & (out["n_neg"] > 0)] = 0.0
+                elif rule == "majority":
+                    y[out["n_pos"] > out["n_neg"]] = 1.0
+                    y[out["n_neg"] > out["n_pos"]] = 0.0
+                else:
+                    y[(out["n_pos"] > 0) & (out["n_neg"] == 0)] = 1.0
+                    y[(out["n_neg"] > 0) & (out["n_pos"] == 0)] = 0.0
+                y[out["n_studies"] < min_studies] = pd.NA
+                out["y"] = y
+                out["contradictory"] = (out["n_pos"] > 0) & (out["n_neg"] > 0)
+                return out.reset_index()
+
+            return SimpleNamespace(standardize_table=standardize_table, aggregate_standardized=aggregate_standardized)
+
         from src import chemistry, data, labels, models, paths, public_features
+
+        # A complete replacement file also works against the earlier repository
+        # package: use identical embedded guards without modifying imported modules.
+        if (getattr(chemistry, "STANDARDIZATION_POLICY", None) != "single-organic-parent-v2"
+                or not hasattr(labels, "aggregate_standardized")):
+            from types import SimpleNamespace
+            _guards = _portable_identity_guards()
+            _chemistry_api = vars(chemistry).copy()
+            _chemistry_api.update(standardize_table=_guards.standardize_table,
+                                  STANDARDIZATION_POLICY="single-organic-parent-v2")
+            chemistry = SimpleNamespace(**_chemistry_api)
+            _labels_api = vars(labels).copy()
+            _labels_api["aggregate_standardized"] = _guards.aggregate_standardized
+            labels = SimpleNamespace(**_labels_api)
 
         STUDY = "FCM2018"  # Repository-local identifier, not a MetaboLights accession.
         HOOK_FEATURE = "FCM2018-0010"
@@ -131,8 +320,8 @@ def _(notebook_file):
             if not assigned_counts.eq(1).all():
                 raise ValueError("Each entry must retain exactly one assigned structure.")
 
-            # Preserve the existing label rule, molecular representation, model, and
-            # seed. Apply the SAME standardization to training and candidate structures.
+            # Preserve the label rule, representation, model and seed. Apply the
+            # SAME guarded organic-parent standardization to training and candidates.
             rdkit_version = importlib.metadata.version("rdkit")
             standardization_cache = paths.CACHE / f"demo_standardization_rdkit_{rdkit_version}.parquet"
             with rdBase.BlockLogs():
@@ -145,10 +334,8 @@ def _(notebook_file):
                 candidate_std = chemistry.standardize_table(
                     candidates[["smiles"]], cache_path=standardization_cache
                 )
-            training = (
-                standardized[standardized["y"].notna() & standardized["ok"].fillna(False)]
-                .drop_duplicates("inchikey_std").reset_index(drop=True)
-            )
+            reconciled = labels.aggregate_standardized(standardized, rule="any_positive")
+            training = reconciled.loc[reconciled["y"].notna()].reset_index(drop=True)
             label_conflicts = int(
                 standardized.loc[standardized["ok"].fillna(False)].groupby("inchikey_std")["y"]
                 .nunique().gt(1).sum()
@@ -174,6 +361,7 @@ def _(notebook_file):
             scored["tanimoto_neighbour"] = similarity
             scored["smiles_std"] = candidate_std["smiles_std"].to_numpy()
             scored["inchikey_std"] = candidate_std["inchikey_std"].to_numpy()
+            scored["structure_note"] = candidate_std["note"].fillna("").to_numpy()
             scored["in_training"] = scored["inchikey_std"].isin(set(training["inchikey_std"]))
             scored["nn_smiles"] = [training.iloc[j]["smiles_std"] if j >= 0 else "" for j in nearest_indices]
             scored["nn_name"] = [str(training.iloc[j]["name"]) if j >= 0 else "Unavailable" for j in nearest_indices]
@@ -207,11 +395,15 @@ def _(notebook_file):
                 "n_training_substances": len(training),
                 "n_training_positive": int(y.sum()),
                 "n_standardized_label_conflicts": label_conflicts,
-                "label_rule": "any_positive; ambiguous excluded; deduplicated standardized InChIKey",
+                "n_structure_exclusions": int((~standardized["ok"].fillna(False)).sum()),
+                "structure_exclusion_reasons": standardized.loc[~standardized["ok"].fillna(False), "note"].value_counts().to_dict(),
+                "n_parent_identities_merged": int((reconciled["n_raw_identities"] > 1).sum()),
+                "label_rule": "any_positive; ambiguous excluded; conclusion counts reconciled by standardized InChIKey",
                 "model": "LightGBM; src.models.build('lgbm', 0)",
                 "model_parameters": classifier.get_params(),
                 "fingerprint": {"name": "ECFP4", "radius": 2, "bits": 2048},
-                "standardization": "Cleanup > FragmentParent > Uncharger > canonical tautomer",
+                "standardization": "single organic parent scope > Cleanup > organic fragment > Uncharger > canonical tautomer",
+                "standardization_policy": chemistry.STANDARDIZATION_POLICY,
                 "candidate_scope": "retained same-formula structures, not spectrum-supported candidates",
                 "versions": {name: importlib.metadata.version(name) for name in (
                     "rdkit", "lightgbm", "numpy", "pandas", "scikit-learn", "marimo"
@@ -301,7 +493,7 @@ def _(notebook_file):
             selected = inspected["selected"]
             cols = ["rank", "cid", "is_assigned", "inchikey", "smiles", "smiles_std",
                     "tanimoto_neighbour", "nn_name", "nn_inchikey", "score", "in_training",
-                    "in_domain", "weight"]
+                    "in_domain", "weight", "structure_note"]
             # pandas converts absent CIDs/invalid scores to JSON null, not NaN.
             rows = json.loads(view["candidates"][cols].to_json(orient="records", double_precision=15))
             payload = {
@@ -641,8 +833,8 @@ def _():
             return f'''<div class="gx">
               <div class="gx-kicker">Food-contact migrants · Genotoxicity screening · EFSA OpenFoodTox</div>
               <h1>What if the chemical <em>identity</em> is wrong?</h1>
-              <div class="gx-intro"><p>A GC–MS assignment proposes a molecular identity. The genotoxicity model evaluates the structure supplied with that identity.</p>
-                <p><strong>Select an entry, then select a structure.</strong> Follow its nearest EFSA training structure, genotoxicity score and matched structural motifs. Move the similarity criterion to see which results your screening rule includes.</p></div>
+              <div class="gx-intro"><p><strong>A small model score can hide a large identity problem.</strong> Start with the tentative Irganox 1010 degradation product: does the model have enough similar chemistry to interpret its score?</p>
+                <p><strong>1. Inspect the assignment. 2. Compare molecular structures. 3. Check covered identity weight.</strong> The fitted EFSA-label model stays fixed while marimo updates the results of your choices.</p></div>
               <div class="gx-data-scale">
                 <div><div class="gx-label">EFSA records</div><strong>{provenance['n_efsa_records']:,}</strong><span class="gx-small">Substance–output records</span></div>
                 <div><div class="gx-label">Resolved identities</div><strong>{provenance['n_efsa_resolved_identities']:,}</strong><span class="gx-small">Distinct raw InChIKeys</span></div>
@@ -721,7 +913,7 @@ def _():
                 text = 'Open Explore same-formula structures to inspect the other retained molecules.'
             else:
                 title = f"{view['n_retained']} molecular structures · {escaped(f['chemical_formula'])}"
-                text = 'Click a molecule. Its drawing, nearest EFSA neighbour, score and structural motifs update in the selected-result panels.'
+                text = 'Click a molecule. Its drawing, nearest EFSA neighbour, score and structural motifs update together. These retained same-formula structures are a sensitivity scenario; no spectrum identifies them as alternatives for this peak.'
             return f'''<div><div class="gx-label">Molecules for {escaped(f['feature_id'])}</div>
               <h2 style="font-size:24px;margin:5px 0">{title}</h2><p class="gx-small">{text}</p></div>'''
 
@@ -739,7 +931,7 @@ def _():
             membership = '<p class="gx-small">This standardized identity is present in the EFSA training set.</p>' if bool(row["in_training"]) else ""
             if not has_output:
                 state = "MODEL INPUT COULD NOT BE READ"
-                interpretation = "The standardized SMILES could not be parsed for fingerprinting. The retained raw structure is shown; this pipeline produced no score or similarity for it."
+                interpretation = "No supported standardized model input is available. The retained raw structure is shown; this pipeline produced no score or similarity for it. " + str(row.get("structure_note", ""))
             elif accepted:
                 interpretation = "The selected structure meets your similarity criterion. Its score contributes only when this identity scenario gives the structure weight."
             else:
@@ -760,8 +952,8 @@ def _():
                   <div class="gx-name">{escaped(row['nn_name'])}</div></div>
               </div>
               <div class="gx-results">
-                <div><div class="gx-label">Genotoxicity model score</div><p class="gx-result-value">{fmt_score(row['score'])}</p>
-                  <p class="gx-small">0–1 classifier output: higher means a stronger positive-genotoxicity signal. Uncalibrated.</p></div>
+                <div><div class="gx-label">EFSA-label model score</div><p class="gx-result-value">{fmt_score(row['score'])}</p>
+                  <p class="gx-small">0–1 output of the EFSA-label classifier. Uncalibrated; not a measured hazard or identity probability.</p></div>
                 <div><div class="gx-label">Nearest-structure similarity</div><p class="gx-result-value">{tc_text}</p>
                   <p class="gx-small">Tanimoto · ECFP4<br>Your selected minimum: {view['cutoff']:.2f}</p></div>
               </div>
@@ -867,10 +1059,18 @@ def _():
             else:
                 outcome = f"This molecule is outside your criterion Tc ≥ {view['cutoff']:.2f}; its score is withheld from screening interpretation."
             tc = f"{row['tanimoto_neighbour']:.3f}" if has_output else 'Unavailable'
+            set_result = (f"{100*view['covered_weight']:.0f}% of the active identity weight is included; "
+                          f"conditional model score {fmt_score(view['conditional_score'])}."
+                          if view['covered_weight'] > 0 else
+                          '0% included identity weight: no aggregate screening score under these settings.')
+            next_step = ('Next step: confirm the tentative identity with independent analytical evidence.'
+                         if not view['confirmed'] else
+                         'Assess the confirmed identity using the original conclusions and experimental evidence.')
             return f'''<div class="gx gx-close" data-selection-key="{inspected['selection_key']}">
               <div class="gx-label">Selected molecular result · {escaped(view['feature']['feature_id'])} · #{int(row['rank']):02d}</div>
               <h2>{escaped(name)}</h2><p>{outcome}</p><p>Model score {fmt_score(row['score'])} · similarity Tc {tc}.</p>
-              <p>Identity determines the molecular input. Similarity determines whether your screening rule includes its score.</p></div>'''
+              <p><strong>{set_result}</strong></p><p>{next_step}</p>
+              <p>Identity, applicability and structural motifs guide follow-up. Neither a small score nor an absent motif establishes safety.</p></div>'''
 
 
         def plot_positions(features):
@@ -1074,7 +1274,7 @@ def _():
                 explanation = 'This describes the listed motif rules; it is not a genotoxicity classification.'
             domain = 'meets' if inspected['selected_evaluable'] else 'does not meet'
             if not np.isfinite(float(row['score'])):
-                model_text = 'The standardized input could not be read; no classifier result is available.'
+                model_text = 'No supported standardized model input is available; no classifier result was produced.'
             else:
                 model_text = f"Score {fmt_score(row['score'])}; this structure {domain} your similarity criterion Tc ≥ {view['cutoff']:.2f}."
             return f'''<div class="gx gx-alert-live gx-section" data-selection-key="{inspected['selection_key']}" aria-live="polite">
@@ -1544,10 +1744,13 @@ def _(demo_view, mo, provenance, view):
       <p>Your existing LightGBM configuration, seed 0, is fitted on {provenance['n_training_substances']:,}
         standardized EFSA substances ({provenance['n_training_positive']} positive labels).
         Label aggregation: any positive; ambiguous labels excluded. No external endpoint is merged in this figure.
-        Both training and retained structures use the same cleanup, parent, uncharging and tautomer pipeline,
+        Both training and retained structures use the same organic-parent scope check, cleanup, uncharging and tautomer pipeline,
         then radius-2, 2,048-bit Morgan fingerprints.</p>
-      <p>The existing aggregation pipeline deduplicates standardized identities by keeping the first row;
-        {provenance['n_standardized_label_conflicts']} standardized keys have conflicting labels before that step.
+      <p>Inorganic structures, metal complexes and multiple-organic-fragment inputs are excluded before removing fragments
+        ({provenance['n_structure_exclusions']} aggregated inputs in this run). Isolated Na+ and K+ counterions are supported.
+        Conclusion counts for supported structures are summed by standardized identity and the any-positive rule is applied again;
+        {provenance['n_parent_identities_merged']} parent identities merge more than one raw identity,
+        with {provenance['n_standardized_label_conflicts']} pre-reconciliation conflicting keys. Table order never chooses the label.
         Training membership is checked by standardized InChIKey; Tc = 1 alone does not prove identical compounds.</p>
       <p>The score is an uncalibrated classifier output. In-training identities are marked explicitly.
         This is not external validation, a genotoxicity assay, or a risk assessment.
@@ -1573,6 +1776,9 @@ def _(demo_view, mo, provenance, view):
 
       <h3>Minimum-similarity sensitivity for the selected entry</h3>
       <p>The left curve is the inspected molecule’s domain membership over Tc settings (IN/OUT). The right curves aggregate identity weights for the current GC–MS entry. Clicking a molecule changes the left curve; it does not reweight the complete set. Amber markers show the active Tc and identity scenario. These deterministic curves are not confidence intervals.</p>
+      <h3>AI assistance</h3>
+      <p>AI assistance was used for code review, chemical-input guards, regression tests and presentation text.
+        RDKit draws the recorded molecular structures; notebook calculations produce the displayed model results.</p>
     </div>'''
     mo.accordion({
         "Methods, provenance & sensitivity details": mo.vstack([
