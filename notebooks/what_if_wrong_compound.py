@@ -15,6 +15,7 @@
 # ]
 # ///
 
+# MOLAB FIX 7 — explicit scientific environment before all model imports
 # What if the chemical identity is wrong?
 # Run the interactive notebook:
 # uvx --python 3.12 --from 'marimo==0.24.2' marimo run --sandbox what_if_wrong_compound.py
@@ -115,11 +116,12 @@ def _():
         notebook_file = Path(__file__).resolve()
     except NameError:
         notebook_file = Path(mo.notebook_location() or Path.cwd())
-    return mo, notebook_file
+    runtime_ready = tuple((name, _metadata.version(name)) for name in _required)
+    return mo, notebook_file, runtime_ready
 
 
 @app.cell(hide_code=True)
-def _(notebook_file):
+def _(notebook_file, runtime_ready):
     def _build_demo(notebook_source_file):
         """Recompute the competition figure from bundled data and the existing model.
 
@@ -131,10 +133,13 @@ def _(notebook_file):
         import hashlib
         import importlib.metadata
         import json
-        import numpy as np
-        import pandas as pd
-        from rdkit import Chem, rdBase, RDLogger
-        from rdkit.Chem import rdMolDescriptors
+        import importlib as runtime_modules
+        np = runtime_modules.import_module("numpy")
+        pd = runtime_modules.import_module("pandas")
+        Chem = runtime_modules.import_module("rdkit.Chem")
+        rdBase = runtime_modules.import_module("rdkit.rdBase")
+        RDLogger = runtime_modules.import_module("rdkit.RDLogger")
+        rdMolDescriptors = runtime_modules.import_module("rdkit.Chem.rdMolDescriptors")
         import importlib
         chemistry, data, labels, models, paths, public_features, splitting = (
             importlib.import_module("genotox_food_migrants." + name)
@@ -397,7 +402,7 @@ def _(notebook_file):
 
 
 @app.cell(hide_code=True)
-def _(notebook_file):
+def _(notebook_file, runtime_ready):
     def _build_demo_view():
             """Guided presentation for the real-data competition figure."""
 
@@ -405,12 +410,13 @@ def _(notebook_file):
             from html import escape
             from io import StringIO
             import xml.etree.ElementTree as ET
-            import numpy as np
-            import matplotlib
+            import importlib as figure_modules
+            np = figure_modules.import_module("numpy")
+            matplotlib = figure_modules.import_module("matplotlib")
             matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            from rdkit import Chem
-            from rdkit.Chem.Draw import rdMolDraw2D
+            plt = figure_modules.import_module("matplotlib.pyplot")
+            Chem = figure_modules.import_module("rdkit.Chem")
+            rdMolDraw2D = figure_modules.import_module("rdkit.Chem.Draw.rdMolDraw2D")
 
             PAPER = "#faf8f4"
             INK = "#253b43"
@@ -1246,10 +1252,11 @@ def _(notebook_file):
 
 
 @app.cell(hide_code=True)
-def _(notebook_file):
+def _(notebook_file, runtime_ready):
     def _build_widgets():
             """Local widget definitions embedded in the delivered Marimo notebook."""
-            import anywidget
+            import importlib as widget_modules
+            anywidget = widget_modules.import_module("anywidget")
             import traitlets
 
             STUDY_JS = r'''
