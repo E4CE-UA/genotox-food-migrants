@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "content_matched_reference_export",
+  "reference_export": {
+    "doi": "10.5281/zenodo.8120114",
+    "version": 6,
+    "publication_date": "2023-09-13",
+    "filename": "Genotoxicity_KJ_2023.xlsx",
+    "url": "https://zenodo.org/records/8120114/files/Genotoxicity_KJ_2023.xlsx?download=1",
+    "zenodo_md5": "cc6ad4a2fe03965874910fb19b588655",
+    "downloaded_md5": "cc6ad4a2fe03965874910fb19b588655",
+    "sha256": "738f7e4865956999c007d403b2be8ea5e998b71da8504de606b875f00cefe37d",
+    "retrieved_on": "2026-10-04"
+  },
+  "verification": {
+    "fields": [
+      "Substance",
+      "Author",
+      "Year",
+      "OutputID",
+      "Genotoxicity"
+    ],
+    "normalization": "One-pass Excel _xHHHH_ decode, trim strings, numeric values to 15 significant digits, explicit missing marker",
+    "official_rows": 10827,
+    "augmented_rows": 10827,
+    "resolved_rows": 10827,
+    "label_row_multiset_matches_augmented": 10827,
+    "label_row_multiset_matches_resolved": 10827,
+    "augmented_preserves_row_order": true,
+    "resolved_preserves_row_order": true
+  },
+  "historical_download_release": "not recorded; content equality does not identify the original download date",
+  "structure_join": {
+    "input": "data/genotoxicity_cas_cid.xlsx",
+    "output": "data/efsa_estructuras.csv",
+    "script": "src/resolver.py",
+    "resolution_precedence": [
+      "prepopulated PubChem_CID",
+      "validated CAS to PubChem CID",
+      "decoded substance name to PubChem CID"
+    ],
+    "row_alignment_verified": true,
+    "endpoint_fields_preserved": true,
+    "counts": {
+      "excel": 7353,
+      "unresolved": 3191,
+      "nombre": 283
+    },
+    "limitations": [
+      "Prepopulated CAS and PubChem_CID acquisition logs are not bundled.",
+      "A name-resolved CID is not analytical confirmation of identity.",
+      "Source and resolved structures are screened by the common model representation policy."
+    ]
+  }
+}

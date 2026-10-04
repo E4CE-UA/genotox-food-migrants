@@ -66,16 +66,32 @@ def merge(base: pd.DataFrame, ext: pd.DataFrame,
     """
     base = base.copy()
     base["source"] = base.get("source", "efsa")
-    cols = [key, "y", "source", "smiles_std"]
     if ext.empty:
         return base, pd.DataFrame(columns=[key, "y_base", "y_external", "source"])
 
-    e = ext[[c for c in cols if c in ext.columns]].dropna(subset=[key, "y"])
+    # Keep ok and the structure-audit columns: dropping ok silently prevented
+    # every new external structure from reaching the modelable set.
+    e = ext.dropna(subset=[key, "y"]).copy()
+    if "ok" in e:
+        e = e.loc[e["ok"].fillna(False)]
     e = e.drop_duplicates(subset=[key, "y", "source"])
 
-    common = e.merge(base[[key, "y"]].dropna(), on=key, suffixes=("_external", "_base"))
+    common = e[[key, "y", "source"]].merge(base[[key, "y"]].dropna(), on=key, suffixes=("_external", "_base"))
     conflicts = common[common["y_external"] != common["y_base"]]
 
-    new = e[~e[key].isin(base[key])].drop_duplicates(subset=key)
-    merged = pd.concat([base, new], ignore_index=True)
+    # External-only disagreements have no declared arbitration rule. Record
+    # and exclude them instead of selecting the first source by filename.
+    disputed = e.groupby(key)["y"].nunique().gt(1)
+    disputed_keys = disputed[disputed].index
+    external_only = e[e[key].isin(disputed_keys) & ~e[key].isin(base[key])]
+    if len(external_only):
+        extra = external_only[[key, "y", "source"]].rename(columns={"y": "y_external"})
+        extra["y_base"] = pd.NA
+        conflicts = pd.concat([conflicts, extra], ignore_index=True)
+    unique = e.loc[~e[key].isin(disputed_keys)].sort_values([key, "source"]).drop_duplicates(key)
+    if base_priority:
+        new = unique[~unique[key].isin(base[key])]
+        merged = pd.concat([base, new], ignore_index=True)
+    else:
+        merged = pd.concat([base[~base[key].isin(unique[key])], unique], ignore_index=True)
     return merged, conflicts.reset_index(drop=True)

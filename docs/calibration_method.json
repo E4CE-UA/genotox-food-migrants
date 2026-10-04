@@ -1,0 +1,622 @@
+{
+  "schema_version": 2,
+  "endpoint": "aggregated any-positive EFSA conclusion label",
+  "claim": "transparent compound-identity uncertainty screening demonstration",
+  "n_identities": 1892,
+  "n_positive": 130,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "default_protocol": "scaffold_identity",
+  "protocols": {
+    "scaffold_identity": "Disjoint ring scaffolds; acyclic parents grouped individually with stable InChIKey IDs.",
+    "scaffold_acyclic_series_070": "Disjoint ring scaffolds and acyclic ECFP4 Tc >= .70 connected components; structure-only robustness protocol."
+  },
+  "comparison": "Matched raw and sigmoid ensembles reuse the exact same three fitted classifiers.",
+  "calibration": "Three StratifiedGroupKFold classifier/calibrator pairs, sigmoid, ensemble=True.",
+  "cutoff_selection": "Minimum training-OOF Brier, >=50% coverage, >=50 retained and >=5 positives. No outer test tuning.",
+  "interactive_cutoff": "0.40 is exploratory, not a validated confidence boundary.",
+  "external_validation": {
+    "status": "not performed",
+    "reason": "No independently sourced compatible endpoint supplied. FCM standard confirmation concerns identity only."
+  },
+  "efsa_release": {
+    "schema_version": 1,
+    "status": "content_matched_reference_export",
+    "reference_export": {
+      "doi": "10.5281/zenodo.8120114",
+      "version": 6,
+      "publication_date": "2023-09-13",
+      "filename": "Genotoxicity_KJ_2023.xlsx",
+      "url": "https://zenodo.org/records/8120114/files/Genotoxicity_KJ_2023.xlsx?download=1",
+      "zenodo_md5": "cc6ad4a2fe03965874910fb19b588655",
+      "downloaded_md5": "cc6ad4a2fe03965874910fb19b588655",
+      "sha256": "738f7e4865956999c007d403b2be8ea5e998b71da8504de606b875f00cefe37d",
+      "retrieved_on": "2026-10-04"
+    },
+    "verification": {
+      "fields": [
+        "Substance",
+        "Author",
+        "Year",
+        "OutputID",
+        "Genotoxicity"
+      ],
+      "normalization": "One-pass Excel _xHHHH_ decode, trim strings, numeric values to 15 significant digits, explicit missing marker",
+      "official_rows": 10827,
+      "augmented_rows": 10827,
+      "resolved_rows": 10827,
+      "label_row_multiset_matches_augmented": 10827,
+      "label_row_multiset_matches_resolved": 10827,
+      "augmented_preserves_row_order": true,
+      "resolved_preserves_row_order": true
+    },
+    "historical_download_release": "not recorded; content equality does not identify the original download date",
+    "structure_join": {
+      "input": "data/genotoxicity_cas_cid.xlsx",
+      "output": "data/efsa_estructuras.csv",
+      "script": "src/resolver.py",
+      "resolution_precedence": [
+        "prepopulated PubChem_CID",
+        "validated CAS to PubChem CID",
+        "decoded substance name to PubChem CID"
+      ],
+      "row_alignment_verified": true,
+      "endpoint_fields_preserved": true,
+      "counts": {
+        "excel": 7353,
+        "unresolved": 3191,
+        "nombre": 283
+      },
+      "limitations": [
+        "Prepopulated CAS and PubChem_CID acquisition logs are not bundled.",
+        "A name-resolved CID is not analytical confirmation of identity.",
+        "Source and resolved structures are screened by the common model representation policy."
+      ]
+    }
+  },
+  "versions": {
+    "lightgbm": "4.7.0",
+    "rdkit": "2026.3.6",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "scikit-learn": "1.9.1",
+    "scipy": "1.18.1",
+    "matplotlib": "3.11.2",
+    "marimo": "0.24.2",
+    "pyarrow": "25.0.1"
+  },
+  "python": "3.12.14",
+  "parameters": {
+    "lgbm": {
+      "boosting_type": "gbdt",
+      "class_weight": "balanced",
+      "colsample_bytree": 0.6,
+      "importance_type": "split",
+      "learning_rate": 0.05,
+      "max_depth": -1,
+      "min_child_samples": 10,
+      "min_child_weight": 0.001,
+      "min_split_gain": 0.0,
+      "n_estimators": 400,
+      "n_jobs": 2,
+      "num_leaves": 31,
+      "objective": null,
+      "random_state": 4,
+      "reg_alpha": 0.0,
+      "reg_lambda": 0.0,
+      "subsample": 0.8,
+      "subsample_for_bin": 200000,
+      "subsample_freq": 1,
+      "verbose": -1
+    },
+    "logistic": {
+      "C": 1.0,
+      "class_weight": "balanced",
+      "dual": false,
+      "fit_intercept": true,
+      "intercept_scaling": 1,
+      "l1_ratio": 0.0,
+      "max_iter": 5000,
+      "n_jobs": null,
+      "penalty": "deprecated",
+      "random_state": 4,
+      "solver": "liblinear",
+      "tol": 0.0001,
+      "verbose": 0,
+      "warm_start": false
+    }
+  },
+  "summary": [
+    {
+      "protocol": "scaffold_identity",
+      "model": "prior",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.09788359788359788,
+        "q1": 0.06349206349206349,
+        "q3": 0.10052910052910052,
+        "minimum": 0.06084656084656084,
+        "maximum": 0.10317460317460317
+      },
+      "roc_auc": {
+        "median": 0.5,
+        "q1": 0.5,
+        "q3": 0.5,
+        "minimum": 0.5,
+        "maximum": 0.5
+      },
+      "brier": {
+        "median": 0.08963150569845633,
+        "q1": 0.05950334671787811,
+        "q3": 0.09200409014212023,
+        "minimum": 0.05724082977991456,
+        "maximum": 0.09438453655047697
+      },
+      "log_loss": {
+        "median": 0.33027556381807716,
+        "q1": 0.2368062587147029,
+        "q3": 0.3379426206340426,
+        "minimum": 0.2300596179438704,
+        "maximum": 0.3456832342444388
+      },
+      "ece": {
+        "median": 0.03645691360354504,
+        "q1": 0.009827151174575208,
+        "q3": 0.03976291823055361,
+        "minimum": 0.00652114654756665,
+        "maximum": 0.04306892285756221
+      }
+    },
+    {
+      "protocol": "scaffold_identity",
+      "model": "lgbm_raw_single",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.5806871614684751,
+        "q1": 0.48621579984468005,
+        "q3": 0.5907468567053892,
+        "minimum": 0.4343361514106442,
+        "maximum": 0.7011364661274117
+      },
+      "roc_auc": {
+        "median": 0.8805727554179565,
+        "q1": 0.8432273916144883,
+        "q3": 0.8835922787193973,
+        "minimum": 0.7451781257090991,
+        "maximum": 0.8998162890385792
+      },
+      "brier": {
+        "median": 0.05355770317691933,
+        "q1": 0.053505803020006175,
+        "q3": 0.06458041469318238,
+        "minimum": 0.04446035623476436,
+        "maximum": 0.08395338810669108
+      },
+      "log_loss": {
+        "median": 0.3328548927648564,
+        "q1": 0.2807437154025622,
+        "q3": 0.5082064635843141,
+        "minimum": 0.2464153504339227,
+        "maximum": 0.7042976901243606
+      },
+      "ece": {
+        "median": 0.05222147705763787,
+        "q1": 0.0517479159925592,
+        "q3": 0.06445540921461096,
+        "minimum": 0.04444385507741627,
+        "maximum": 0.0869225259602075
+      }
+    },
+    {
+      "protocol": "scaffold_identity",
+      "model": "lgbm_raw_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.5144728954425296,
+        "q1": 0.5139526390431226,
+        "q3": 0.6052791713266354,
+        "minimum": 0.43489884693493713,
+        "maximum": 0.7071154689243981
+      },
+      "roc_auc": {
+        "median": 0.8790018832391714,
+        "q1": 0.8549575968930807,
+        "q3": 0.8955108359133127,
+        "minimum": 0.7658270932607216,
+        "maximum": 0.904715248009798
+      },
+      "brier": {
+        "median": 0.05453946455234099,
+        "q1": 0.044219429634391065,
+        "q3": 0.06427327225343205,
+        "minimum": 0.0432786320241981,
+        "maximum": 0.08122438809308134
+      },
+      "log_loss": {
+        "median": 0.3484489361833614,
+        "q1": 0.3053929592464566,
+        "q3": 0.47858208130957525,
+        "minimum": 0.20174784984958258,
+        "maximum": 0.6664504304745362
+      },
+      "ece": {
+        "median": 0.0537096950068038,
+        "q1": 0.04789541164601971,
+        "q3": 0.06398297528271406,
+        "minimum": 0.033276234576332886,
+        "maximum": 0.07661496856090798
+      }
+    },
+    {
+      "protocol": "scaffold_identity",
+      "model": "lgbm_sigmoid_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.5396963538214854,
+        "q1": 0.5330930907939498,
+        "q3": 0.6048098203371601,
+        "minimum": 0.43484407348198745,
+        "maximum": 0.7035448665292648
+      },
+      "roc_auc": {
+        "median": 0.8767655367231638,
+        "q1": 0.8523420781485298,
+        "q3": 0.8897832817337462,
+        "minimum": 0.7727100824445957,
+        "maximum": 0.9189222290263319
+      },
+      "brier": {
+        "median": 0.05819099666301649,
+        "q1": 0.040618799380227104,
+        "q3": 0.05962271350757727,
+        "minimum": 0.04047107622492332,
+        "maximum": 0.07655736465914974
+      },
+      "log_loss": {
+        "median": 0.20944137528973683,
+        "q1": 0.15805200628004296,
+        "q3": 0.22168282742027584,
+        "minimum": 0.1538570337201297,
+        "maximum": 0.28283111321400384
+      },
+      "ece": {
+        "median": 0.034466447025091204,
+        "q1": 0.03358404103619384,
+        "q3": 0.034635913129748515,
+        "minimum": 0.023140207634439792,
+        "maximum": 0.049466086173833045
+      }
+    },
+    {
+      "protocol": "scaffold_identity",
+      "model": "logistic_raw_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.5008381279732319,
+        "q1": 0.476760910736707,
+        "q3": 0.5594732964195865,
+        "minimum": 0.3724634115386489,
+        "maximum": 0.606663421509823
+      },
+      "roc_auc": {
+        "median": 0.8012005649717514,
+        "q1": 0.7674566061662835,
+        "q3": 0.8781383955909369,
+        "minimum": 0.7063005824067771,
+        "maximum": 0.8827399380804953
+      },
+      "brier": {
+        "median": 0.06157785983791295,
+        "q1": 0.058747600921590384,
+        "q3": 0.06325628759507095,
+        "minimum": 0.04801851724044098,
+        "maximum": 0.0887797714623735
+      },
+      "log_loss": {
+        "median": 0.21782593444057366,
+        "q1": 0.1957518703452412,
+        "q3": 0.26423078440176484,
+        "minimum": 0.19424429231447554,
+        "maximum": 0.3486781500125948
+      },
+      "ece": {
+        "median": 0.05220920754008021,
+        "q1": 0.042754448987953095,
+        "q3": 0.07018415399105175,
+        "minimum": 0.0324824035071145,
+        "maximum": 0.07334638463679208
+      }
+    },
+    {
+      "protocol": "scaffold_identity",
+      "model": "logistic_sigmoid_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.48084451348655244,
+        "q1": 0.4696102174721157,
+        "q3": 0.551628273031729,
+        "minimum": 0.3674232088183801,
+        "maximum": 0.5929954604096094
+      },
+      "roc_auc": {
+        "median": 0.798964218455744,
+        "q1": 0.7692795434730919,
+        "q3": 0.878328173374613,
+        "minimum": 0.7047122002874214,
+        "maximum": 0.8789957134109002
+      },
+      "brier": {
+        "median": 0.06646070017264079,
+        "q1": 0.044950733283699466,
+        "q3": 0.06760071637846715,
+        "minimum": 0.04409947261637302,
+        "maximum": 0.08077351959278715
+      },
+      "log_loss": {
+        "median": 0.23140294729570757,
+        "q1": 0.18105624775964893,
+        "q3": 0.26207314059819903,
+        "minimum": 0.165284953064041,
+        "maximum": 0.3200577103030631
+      },
+      "ece": {
+        "median": 0.0351397119566218,
+        "q1": 0.0339486435628815,
+        "q3": 0.03947502155390601,
+        "minimum": 0.011752676358018374,
+        "maximum": 0.05092185231999957
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "prior",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.08465608465608465,
+        "q1": 0.08465608465608465,
+        "q3": 0.0873015873015873,
+        "minimum": 0.06613756613756613,
+        "maximum": 0.10582010582010581
+      },
+      "roc_auc": {
+        "median": 0.5,
+        "q1": 0.5,
+        "q3": 0.5,
+        "minimum": 0.5,
+        "maximum": 0.5
+      },
+      "brier": {
+        "median": 0.07788651295053016,
+        "q1": 0.07788651295053016,
+        "q3": 0.08021978757072964,
+        "minimum": 0.06177372562053452,
+        "maximum": 0.09677284492352661
+      },
+      "log_loss": {
+        "median": 0.29300371386716545,
+        "q1": 0.29300371386716545,
+        "q3": 0.30031993139449353,
+        "minimum": 0.24361269734614496,
+        "maximum": 0.3534986141568651
+      },
+      "ece": {
+        "median": 0.019926890468502073,
+        "q1": 0.019926890468502073,
+        "q3": 0.023232895095510686,
+        "minimum": 0.003215141920558051,
+        "maximum": 0.04637492748457083
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "lgbm_raw_single",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.4723689564821483,
+        "q1": 0.4335344057343604,
+        "q3": 0.5266460480970268,
+        "minimum": 0.37998202810279885,
+        "maximum": 0.5887936466153235
+      },
+      "roc_auc": {
+        "median": 0.8185835694050991,
+        "q1": 0.8027456647398843,
+        "q3": 0.8264992774566474,
+        "minimum": 0.7625739644970414,
+        "maximum": 0.8450592885375494
+      },
+      "brier": {
+        "median": 0.060123008349449496,
+        "q1": 0.06006602273754453,
+        "q3": 0.06277403519904919,
+        "minimum": 0.05981339248985324,
+        "maximum": 0.08770183042573104
+      },
+      "log_loss": {
+        "median": 0.4634403961380264,
+        "q1": 0.4164045856919299,
+        "q3": 0.4642909072696687,
+        "minimum": 0.41330281147851244,
+        "maximum": 0.7418901582455701
+      },
+      "ece": {
+        "median": 0.06262589184579999,
+        "q1": 0.06117485872250286,
+        "q3": 0.06560320422954227,
+        "minimum": 0.058805055210319035,
+        "maximum": 0.08826912844079213
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "lgbm_raw_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.46609768390323614,
+        "q1": 0.45738200820617136,
+        "q3": 0.5054865428790098,
+        "minimum": 0.331377149067946,
+        "maximum": 0.5947589415576254
+      },
+      "roc_auc": {
+        "median": 0.8151192196531792,
+        "q1": 0.7909023668639052,
+        "q3": 0.8464595375722543,
+        "minimum": 0.7854957507082152,
+        "maximum": 0.8779095300834431
+      },
+      "brier": {
+        "median": 0.06155660493954168,
+        "q1": 0.05723511629890069,
+        "q3": 0.06600914737258608,
+        "minimum": 0.05629303041659403,
+        "maximum": 0.08417701312516468
+      },
+      "log_loss": {
+        "median": 0.4557625665542087,
+        "q1": 0.4045521147414074,
+        "q3": 0.464616805768236,
+        "minimum": 0.37384989624211595,
+        "maximum": 0.6894053960924124
+      },
+      "ece": {
+        "median": 0.06172995153657002,
+        "q1": 0.05333747217915544,
+        "q3": 0.06254659811792951,
+        "minimum": 0.05085388005642081,
+        "maximum": 0.08410441017381678
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "lgbm_sigmoid_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.465508082158374,
+        "q1": 0.4622221249642272,
+        "q3": 0.5241539922627104,
+        "minimum": 0.3381249423845717,
+        "maximum": 0.6010383201417183
+      },
+      "roc_auc": {
+        "median": 0.8159320809248555,
+        "q1": 0.7934277620396601,
+        "q3": 0.8596459537572255,
+        "minimum": 0.7835059171597633,
+        "maximum": 0.8674571805006588
+      },
+      "brier": {
+        "median": 0.057701311240155526,
+        "q1": 0.05348321177171488,
+        "q3": 0.06117651829822425,
+        "minimum": 0.052376079979753076,
+        "maximum": 0.08068678806916052
+      },
+      "log_loss": {
+        "median": 0.2172507919193836,
+        "q1": 0.1998656930859358,
+        "q3": 0.21807757216761026,
+        "minimum": 0.19894679813565375,
+        "maximum": 0.2943234776916348
+      },
+      "ece": {
+        "median": 0.019900048892474553,
+        "q1": 0.019837484977805474,
+        "q3": 0.0199133362973412,
+        "minimum": 0.0181643979072457,
+        "maximum": 0.04977912016885533
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "logistic_raw_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.3607460824389106,
+        "q1": 0.3574107393033949,
+        "q3": 0.48217073908843333,
+        "minimum": 0.33343048024640515,
+        "maximum": 0.5187766178061545
+      },
+      "roc_auc": {
+        "median": 0.7862174855491328,
+        "q1": 0.7509934971098267,
+        "q3": 0.8074787535410766,
+        "minimum": 0.7105029585798818,
+        "maximum": 0.8130873956960913
+      },
+      "brier": {
+        "median": 0.06381172559842857,
+        "q1": 0.06352242120898305,
+        "q3": 0.07001672360580119,
+        "minimum": 0.06122147336766644,
+        "maximum": 0.08554984462082081
+      },
+      "log_loss": {
+        "median": 0.25337935616684887,
+        "q1": 0.24498464773094097,
+        "q3": 0.26227586841953276,
+        "minimum": 0.2235902412934012,
+        "maximum": 0.3375054873238762
+      },
+      "ece": {
+        "median": 0.055716428916197075,
+        "q1": 0.04832061362149405,
+        "q3": 0.06471483347611331,
+        "minimum": 0.042031480856415074,
+        "maximum": 0.06633634595025667
+      }
+    },
+    {
+      "protocol": "scaffold_acyclic_series_070",
+      "model": "logistic_sigmoid_ensemble",
+      "n_splits": 5,
+      "pr_auc": {
+        "median": 0.3734042928041941,
+        "q1": 0.37042089360995467,
+        "q3": 0.48004219302184814,
+        "minimum": 0.3454924834945913,
+        "maximum": 0.5325820743663607
+      },
+      "roc_auc": {
+        "median": 0.787481936416185,
+        "q1": 0.7551481213872833,
+        "q3": 0.8090651558073655,
+        "minimum": 0.7067307692307692,
+        "maximum": 0.8094861660079051
+      },
+      "brier": {
+        "median": 0.06146486163945707,
+        "q1": 0.058689167349295586,
+        "q3": 0.06579317256491424,
+        "minimum": 0.053253434921527024,
+        "maximum": 0.08506700826438189
+      },
+      "log_loss": {
+        "median": 0.23935216503123086,
+        "q1": 0.2230416960032203,
+        "q3": 0.24099252225278797,
+        "minimum": 0.1986725146323872,
+        "maximum": 0.323817923114537
+      },
+      "ece": {
+        "median": 0.031607173786438875,
+        "q1": 0.02213008036221693,
+        "q3": 0.033346876497512584,
+        "minimum": 0.011526537076410897,
+        "maximum": 0.04846010801731742
+      }
+    }
+  ],
+  "limitations": [
+    "Seeds have overlapping test identities; spread is not an independent-sample confidence interval.",
+    "ECE uses ten equal-width bins and depends on binning.",
+    "Filtering changes the test population; lower retained Brier alone is not proof of reliability.",
+    "EFSA conclusions are not a newly validated genotoxicity assay."
+  ]
+}

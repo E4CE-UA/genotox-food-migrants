@@ -48,7 +48,7 @@ def build_cards(sub, assigned_mask=None):
     model's reasoning.
     """
     # Imported lazily so importing the widget never drags in RDKit.
-    from src import candidate_view
+    from genotox_food_migrants import candidate_view
 
     sub = sub.reset_index(drop=True)
     if assigned_mask is not None:

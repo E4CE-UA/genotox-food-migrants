@@ -1,17 +1,20 @@
 """Standardization of structures, ECFP4 fingerprints, scaffolds and similarity.
 
-Standardization follows the usual RDKit order:
-  Cleanup -> FragmentParent -> Uncharger -> TautomerEnumerator.Canonicalize
+Standardization uses an explicit scope check and RDKit transformations:
+  Scope check -> Cleanup -> single carbon-containing fragment -> Uncharger
+  -> TautomerEnumerator.Canonicalize
 Each step can change the InChIKey, so the module records how many
 structures change and at which step, instead of applying the cleanup silently.
-FragmentParent keeps the largest fragment: for salts that is the desired
-behavior, but for real mixtures it discards information, and that is why it
-counts separately how many entries had more than one fragment.
+The model represents a single organic parent. Inorganic substances, metal
+complexes and inputs with multiple carbon-containing fragments are outside
+that scope; they are recorded as excluded before any fragment is discarded.
+Disconnected sodium/potassium counterions are allowed. This is a modelling
+scope restriction, not a claim that excluded substances are non-genotoxic.
 """
 
 import numpy as np
 import pandas as pd
-from rdkit import Chem, DataStructs, RDLogger
+from rdkit import Chem, DataStructs, RDLogger, rdBase
 from rdkit.Chem import rdFingerprintGenerator
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.Scaffolds import MurckoScaffold
@@ -21,6 +24,28 @@ RDLogger.DisableLog("rdApp.*")
 # Tautomer canonicalization is combinatorial: above this number
 # of heavy atoms that step is skipped and this is recorded in the note column.
 MAX_TAUTOMER_ATOMS = 60
+
+# Included in every cache row so pre-fix standardizations cannot be reused.
+STANDARDIZATION_POLICY = "single-organic-parent-v2"
+_ORGANIC_ELEMENTS = {1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 34, 35, 53}
+_COUNTERION_ELEMENTS = {11, 19}  # isolated Na+ and K+ only
+
+
+def _scope_reason(mol) -> str:
+    fragments = Chem.GetMolFrags(mol, asMols=True)
+    organic = [f for f in fragments if any(a.GetAtomicNum() == 6 for a in f.GetAtoms())]
+    if not organic:
+        return "outside model scope: no carbon-containing parent"
+    if len(organic) > 1:
+        return "outside model scope: multiple carbon-containing fragments"
+    for atom in mol.GetAtoms():
+        z = atom.GetAtomicNum()
+        if z in _ORGANIC_ELEMENTS:
+            continue
+        if z in _COUNTERION_ELEMENTS and atom.GetDegree() == 0 and atom.GetFormalCharge() == 1:
+            continue
+        return "outside model scope: unsupported element or metal complex"
+    return ""
 
 
 def _inchikey(mol):
@@ -39,6 +64,8 @@ def standardize_mol(smi: str) -> dict:
     result = {
         "smiles_std": None, "inchikey_std": None, "n_orig_fragments": np.nan,
         "inchikey_changed": False, "ok": False, "note": "",
+        "standardization_policy": STANDARDIZATION_POLICY,
+        "rdkit_version": rdBase.rdkitVersion,
     }
     if not isinstance(smi, str) or not smi.strip():
         result["note"] = "no smiles"
@@ -49,10 +76,21 @@ def standardize_mol(smi: str) -> dict:
         return result
 
     result["n_orig_fragments"] = len(Chem.GetMolFrags(mol))
+    reason = _scope_reason(mol)
+    if reason:
+        result["note"] = reason
+        return result
     ik_input = _inchikey(mol)
     try:
         mol = rdMolStandardize.Cleanup(mol)
-        mol = rdMolStandardize.FragmentParent(mol)
+        # Select the one organic fragment explicitly. LargestFragmentChooser
+        # can otherwise choose a larger inorganic counterion.
+        fragments = Chem.GetMolFrags(mol, asMols=True)
+        organic = [f for f in fragments if any(a.GetAtomicNum() == 6 for a in f.GetAtoms())]
+        if len(organic) != 1:
+            result["note"] = "outside model scope after cleanup: not one organic parent"
+            return result
+        mol = organic[0]
         mol = rdMolStandardize.Uncharger().uncharge(mol)
         if mol.GetNumHeavyAtoms() <= MAX_TAUTOMER_ATOMS:
             mol = rdMolStandardize.TautomerEnumerator().Canonicalize(mol)
@@ -80,8 +118,14 @@ def standardize_table(df: pd.DataFrame, smiles_col: str = "smiles",
 
     cache = pd.DataFrame()
     if cache_path is not None and cache_path.exists():
-        cache = pd.read_parquet(cache_path).set_index(smiles_col)
-        cache = cache[~cache.index.duplicated()]
+        cached = pd.read_parquet(cache_path)
+        required = {smiles_col, "standardization_policy", "rdkit_version"}
+        if required <= set(cached.columns):
+            cache = cached.loc[
+                cached["standardization_policy"].eq(STANDARDIZATION_POLICY)
+                & cached["rdkit_version"].eq(rdBase.rdkitVersion)
+            ].set_index(smiles_col)
+            cache = cache[~cache.index.duplicated()]
 
     pending = unique.difference(cache.index) if len(cache) else unique
     if len(pending):
@@ -92,6 +136,9 @@ def standardize_table(df: pd.DataFrame, smiles_col: str = "smiles",
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache.reset_index().to_parquet(cache_path, index=False)
 
+    if cache.empty:
+        cache = pd.DataFrame(columns=standardize_mol("").keys(),
+                             index=pd.Index([], name=smiles_col))
     return df.join(cache, on=smiles_col)
 
 
@@ -99,7 +146,8 @@ def standardization_summary(df: pd.DataFrame) -> pd.DataFrame:
     rows = [
         ("input structures", len(df)),
         ("successfully standardized", int(df["ok"].sum())),
-        ("not parseable or failed", int((~df["ok"]).sum())),
+        ("outside model scope", int(df["note"].fillna("").str.startswith("outside model scope").sum())),
+        ("not parseable, failed, or outside scope", int((~df["ok"].fillna(False)).sum())),
         ("with more than one fragment (salt or mixture)", int((df["n_orig_fragments"] > 1).sum())),
         ("change InChIKey upon standardization", int(df["inchikey_changed"].sum())),
         ("unique InChIKeys before", df["inchikey"].nunique() if "inchikey" in df else 0),

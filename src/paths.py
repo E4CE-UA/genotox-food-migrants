@@ -8,7 +8,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+PACKAGE = Path(__file__).resolve().parent
+DATA = ROOT / "data" if (ROOT / "pyproject.toml").exists() else PACKAGE / "_data"
+VALIDATION = ROOT / "docs" if (ROOT / "pyproject.toml").exists() else PACKAGE / "_validation"
 
 # In a clone, ROOT is the repository (writable, carries pyproject.toml) and the
 # cache lives there, gitignored. Installed into site-packages there is no repo

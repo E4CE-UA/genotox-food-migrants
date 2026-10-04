@@ -1,8 +1,17 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
-#     "genotox-food-migrants[notebook] @ git+https://github.com/E4CE-UA/genotox-food-migrants",
-#     "marimo",
+#     "lightgbm==4.7.0",
+#     "anywidget==0.11.0",
+#     "marimo==0.24.2",
+#     "matplotlib==3.11.2",
+#     "numpy==2.5.3",
+#     "openpyxl==3.1.5",
+#     "pandas==3.0.6",
+#     "pyarrow==25.0.1",
+#     "rdkit==2026.3.6",
+#     "scikit-learn==1.9.1",
+#     "scipy==1.18.1",
 # ]
 # ///
 import marimo
@@ -34,7 +43,7 @@ def _():
     # If src/paths.py is not beside the notebook - molab running the notebook
     # from a pip install of the package - fall through to the installed `src`.
 
-    from src import (
+    from genotox_food_migrants import (
         ambiguity,
         candidate_view,
         chemistry,
@@ -75,6 +84,7 @@ def _():
         mo,
         models,
         np,
+        pd,
         paths,
         provenance,
         public_features,
@@ -111,19 +121,18 @@ def _(figures, gcms_features, gcms_info, mo):
     _md = mo.md(f"""
     {_head}
 
-    #### Genotoxicity of migrants: from the EFSA label to P(genotoxic | feature)
+    #### Genotoxicity screening: from EFSA conclusions to identity-weighted model scores
 
     A GC-MS peak is not a molecule. It is a mass spectrum with a formula and a
     ranked list of candidate identities, none of them certain. {_size}
-    No public retention index orders them — that was tested and it cannot
-    (section 13).
+    The bundled inputs do not provide evidence to rank the same-formula
+    alternatives. Section 13 also describes a previously reported retention-index experiment.
 
-    So the honest input to a hazard model is not one structure per peak. It is
-    a distribution over hundreds to thousands of them, and the question becomes
-    **"is this peak something that damages DNA?"** answered without knowing
-    which candidate is the right one. This notebook carries that whole
-    distribution through the model instead of collapsing it onto a name — and
-    reports how much of each answer the identity actually supports.
+    This notebook explores **how screening changes when the molecular identity
+    changes**. It propagates explicit identity scenarios through an EFSA-label
+    classifier and reports the included identity weight. Its uncalibrated scores
+    are not probabilities that a peak damages DNA; uniform alternative weights
+    are a sensitivity assumption rather than measured identification confidence.
     """)
     mo.vstack([_md, _hero] if _hero is not None else [_md])
     return
@@ -155,8 +164,9 @@ def _(ROOT, environment, mo, paths):
        10,827 rows through the PubChem API — section 1 shows exactly how many
        survived and where the rest were lost.
     2. **Learn from them.** Aggregate the conclusions into one label per
-       substance, split by scaffold so congeners cannot leak between train and
-       test, and check that the probabilities mean what they say.
+       supported standardized parent, split ring-containing compounds by scaffold,
+       and diagnose score calibration on held-out predictions. Acyclic compounds
+       each receive their own split group; related acyclic series can still span folds.
     3. **Push it back onto the peaks.** Marginalize the prediction over each
        peak's candidate identities -- uniformly on a public source, because
        there is nothing published to weight them by, and under a weighting
@@ -553,11 +563,14 @@ def _(mo):
     mo.md("""
     ## 6. Standardization of structures
 
-    `Cleanup` -> `FragmentParent` -> `Uncharger` -> `TautomerEnumerator`.
+    Scope check -> `Cleanup` -> single organic parent -> `Uncharger` -> `TautomerEnumerator`.
     Each step can change the InChIKey, so the number of structures that
-    change is counted instead of silently cleaning them. `FragmentParent` keeps the
-    largest fragment: correct for salts, but for a real mixture it discards
-    information, which is why multi-fragment entries are counted separately.
+    change is counted instead of silently cleaning them. The representation is
+    a single organic parent: inorganic substances, metal complexes and inputs
+    with multiple carbon-containing fragments are excluded before removing
+    fragments. Isolated sodium/potassium counterions are supported. Original
+    conclusion counts are then combined by standardized identity and the selected
+    label rule is reapplied, so table order cannot decide a conflicting label.
 
     The result is cached in `cache/` and the cell only recalculates the new
     structures.
@@ -566,12 +579,19 @@ def _(mo):
 
 
 @app.cell
-def _(aggregated, chemistry, paths):
-    standardized = chemistry.standardize_table(
+def _(aggregated, chemistry, labels, mo, paths, sel_rule):
+    _standardized_raw = chemistry.standardize_table(
         aggregated, smiles_col="smiles", cache_path=paths.CACHE_STANDARDIZATION
     )
-    standardization_table = chemistry.standardization_summary(standardized)
-    standardization_table
+    standardized = labels.aggregate_standardized(_standardized_raw, rule=sel_rule.value)
+    standardization_table = chemistry.standardization_summary(_standardized_raw)
+    mo.vstack([
+        standardization_table,
+        mo.md(f"**{len(standardized)} supported organic parent identities.** "
+              f"{int((standardized['n_raw_identities'] > 1).sum())} combine raw identities; "
+              f"{int(standardized['raw_label_conflict'].sum())} had differing raw labels, "
+              "resolved from conclusion counts under the selected rule."),
+    ])
     return (standardized,)
 
 
@@ -904,8 +924,11 @@ def _(mo):
     default study the median formula has **1392 real isomers in PubChem**, and
     only 0.4% of its formulae have ten or fewer. The candidate set is capped
     below that by the control above, so every capped feature carries the size
-    of its whole isomer space and the score over it is a Monte Carlo estimate
-    of the expectation, not a sum over an enumerated list.
+    of its listed formula pool. The assigned identity is forcibly retained
+    alongside sampled alternatives. Equal weights define a structural stress-test
+    scenario, not an unbiased estimate over the complete listed pool. The pool
+    is not all chemically possible identities and its retained fraction is not
+    a probability of omitting the true identity.
 
     One honesty note on the argument above: it is a general property of the
     technique, not a measurement of any particular batch. The spectra are not
@@ -1030,6 +1053,7 @@ def _(
     models,
     np,
     paths,
+    pd,
     public_features,
     sel_model,
     sel_study,
@@ -1067,7 +1091,10 @@ def _(
     # The model is the one trained above, applied to candidate structures.
     # This part is real regardless of where the candidate list came from.
     _clf = models.build(sel_model.value, 0).fit(X, y)
-    _fps_cand = chemistry.fingerprints(gcms_candidates["smiles"])
+    _cand_std = chemistry.standardize_table(
+        gcms_candidates[["smiles"]], cache_path=paths.CACHE_STANDARDIZATION
+    )
+    _fps_cand = chemistry.fingerprints(_cand_std["smiles_std"])
     _val = [i for i, f in enumerate(_fps_cand) if f is not None]
     _p = np.full(len(_fps_cand), np.nan)
     if _val:
@@ -1077,6 +1104,9 @@ def _(
         _sim[_val] = chemistry.max_tanimoto([_fps_cand[i] for i in _val], ecfp4_fingerprints)
 
     gcms_candidates = gcms_candidates.assign(
+        smiles_std=_cand_std["smiles_std"].to_numpy(),
+        inchikey_std=_cand_std["inchikey_std"].to_numpy(),
+        structure_note=_cand_std["note"].fillna("").to_numpy(),
         p_genotox=_p,
         tanimoto_neighbour=_sim,
         in_domain=_sim >= sl_ad_threshold.value,
@@ -1084,6 +1114,11 @@ def _(
             gcms_candidates, gcms_features,
             method=_method, temperature=sl_temperature.value,
         ),
+    )
+    # Match labels using the same representation as the model, not a raw key.
+    _label_map = modelable.set_index("inchikey_std")["y"]
+    gcms_candidates["efsa_genotoxic"] = pd.to_numeric(
+        gcms_candidates["inchikey_std"].map(_label_map), errors="coerce"
     )
     feature_probabilities = integration.probability_per_feature(
         gcms_candidates,
@@ -1898,12 +1933,11 @@ def _(
         mo.md(
             "**Features whose limit the model tightens**"
             if bool(ttc_priority["crosses"].any()) else
-            "**No feature crosses.** That is an outcome, not a failure: the highest "
-            f"expected probability across all features is "
+            "**No feature crosses under the current settings.** The highest "
+            f"included identity-weighted classifier score is "
             f"{ttc_priority['identity_weighted_genotoxicity'].max():.3f}, below the threshold. A pipeline that "
-            "produced alarms on a set of ordinary plasticizers and antioxidants would be "
-            "the thing to distrust. The limits each feature is held to are shown anyway, "
-            "so the mechanism is visible."
+            "has no evaluable identity weight has no model decision. These scores "
+            "are uncalibrated and do not establish the safety of the assigned compounds."
         ),
         (ttc_priority[ttc_priority["crosses"]] if bool(ttc_priority["crosses"].any())
          else ttc_priority)

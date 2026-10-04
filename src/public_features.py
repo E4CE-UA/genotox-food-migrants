@@ -239,11 +239,11 @@ def build(accession: str, n_candidates: int = 20, seed: int = 0,
     of the time, and the gate could not match it. It is included and flagged
     `is_assigned`, which also lets a caller measure where in the set it fell.
 
-    When a formula's isomer space is larger than `n_candidates`, the set is a
-    seeded uniform sample and every row carries `n_total` and `sampled`. The
-    score computed over it is then a Monte Carlo estimate of the expectation
-    over the whole isomer space, not a sum over an enumerated set - a
-    distinction section 13 has to carry rather than hide.
+    When the listed PubChem formula pool exceeds `n_candidates`, alternatives
+    are sampled and every row carries `n_total` and `sampled`. The published
+    identity is forcibly included. Equal weights therefore define a retained
+    structural stress-test scenario, NOT an unbiased Monte Carlo estimate of
+    the whole pool. The listed pool is not all chemically possible identities.
     """
     from . import candidates as _cand
 

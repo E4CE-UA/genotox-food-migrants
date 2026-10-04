@@ -54,6 +54,68 @@ def prevalence_threshold(p, n_pos: int) -> float:
     return float(np.sort(p)[::-1][n_pos - 1])
 
 
+def calibration_splits(y, scaffolds, seed: int = 0, n_splits: int = 3, *, groups=None):
+    """Disjoint scaffold folds for calibration; acyclic identities group individually.
+
+    Every observation is used for calibration exactly once. A calibrated pair's
+    classifier never trains on that pair's calibration observations.
+    """
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    y = np.asarray(y, dtype=int)
+    groups = np.asarray(groups, dtype=object) if groups is not None else np.array([
+        s if isinstance(s, str) and s else f"__acyclic_{i}"
+        for i, s in enumerate(scaffolds)], dtype=object)
+    if len(groups) != len(y):
+        raise ValueError("One scaffold is required per training identity.")
+    cv = list(StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+              .split(np.zeros((len(y), 1)), y, groups))
+    for train, calibration in cv:
+        if set(groups[train]) & set(groups[calibration]):
+            raise ValueError("A scaffold crosses a calibration split.")
+        if len(np.unique(y[train])) != 2 or len(np.unique(y[calibration])) != 2:
+            raise ValueError("Both labels must be present in every calibration fold.")
+    return cv
+
+
+def fit_calibrated(X, y, scaffolds, seed: int = 0, n_splits: int = 3, *,
+                   groups=None, model_name="lgbm"):
+    """Fit a sigmoid-calibrated LightGBM ensemble and return its auditable fold sizes.
+
+    The endpoint remains the aggregated EFSA positive label. This does not infer
+    identification confidence, assay-specific genotoxicity or chemical safety.
+    """
+    from sklearn.calibration import CalibratedClassifierCV
+
+    y = np.asarray(y, dtype=int)
+    cv = calibration_splits(y, scaffolds, seed=seed, n_splits=n_splits, groups=groups)
+    base = build(model_name, seed)
+    if model_name == "lgbm":
+        base.set_params(n_jobs=2)
+    estimator = CalibratedClassifierCV(estimator=base, method="sigmoid",
+                                       cv=cv, ensemble=True, n_jobs=1).fit(X, y)
+    report = dict(method="sigmoid", n_folds=n_splits, ensemble=True, seed=seed,
+                  model_name=model_name,
+                  split="StratifiedGroupKFold on supplied stable groups" if groups is not None else
+                        "StratifiedGroupKFold on scaffold; acyclic identities grouped individually",
+                  endpoint="any-positive EFSA conclusion for a supported standardized parent",
+                  independent_calibration=True,
+                  folds=[dict(n_train=len(tr), n_calibration=len(ca),
+                              n_positive_train=int(y[tr].sum()),
+                              n_positive_calibration=int(y[ca].sum())) for tr, ca in cv])
+    return estimator, report
+
+
+def matched_raw_probability(calibrated_estimator, X):
+    """Average the SAME fitted base estimators, before sigmoid calibration.
+
+    Comparing this with calibrated_estimator.predict_proba isolates calibration
+    from the change between a single classifier and an ensemble.
+    """
+    return np.mean([pair.estimator.predict_proba(X)[:, 1]
+                    for pair in calibrated_estimator.calibrated_classifiers_], axis=0)
+
+
 def top_n_prediction(p, n_pos: int) -> np.ndarray:
     """Marks as positive exactly the n_pos with the highest probability.
 

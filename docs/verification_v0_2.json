@@ -1,0 +1,26 @@
+{
+  "package_version": "0.2.0",
+  "release": {
+    "capsule_sha256": "25526fb2be9937d39ea59e5a686f4956ba73e067f94e3b18392468232396c337",
+    "capsule_bytes": 4613129,
+    "n_members": 95,
+    "notebook_sha256": "d9c86b85e4d95b3dc72ceb75f580cf98ad1d87b609042c1df7f920f417e68e08",
+    "package_version": "0.2.0"
+  },
+  "checks": {
+    "unit_tests": 20,
+    "unit_tests_passed": true,
+    "marimo_check_passed": true,
+    "saved_validation_outputs": {
+      "passed": true,
+      "metric_rows_checked": 60,
+      "cutoff_rows_checked": 10,
+      "predictions": 22680,
+      "identities_disjoint": true,
+      "calibration_groups_disjoint": true,
+      "cutoff_selection_uses_training_only": true
+    }
+  },
+  "change_scope": "Distribution cleanup and notebook assistance attribution; model functions, inputs and numerical results unchanged",
+  "independent_endpoint_validation": "not performed; claim remains identity-uncertainty demonstration"
+}

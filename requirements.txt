@@ -1,4 +1,5 @@
 lightgbm==4.7.0
+anywidget==0.11.0
 marimo==0.24.2
 matplotlib==3.11.2
 numpy==2.5.3

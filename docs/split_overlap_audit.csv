@@ -1,0 +1,11 @@
+protocol,seed,n_train,n_test,identity_overlap,ring_scaffold_overlap,group_overlap,n_acyclic_test,n_acyclic_test_with_train_neighbour_ge_070
+scaffold_identity,0,1514,378,0,0,0,132,47
+scaffold_identity,1,1514,378,0,0,0,165,52
+scaffold_identity,2,1514,378,0,0,0,146,55
+scaffold_identity,3,1514,378,0,0,0,160,56
+scaffold_identity,4,1514,378,0,0,0,163,54
+scaffold_acyclic_series_070,0,1514,378,0,0,0,134,0
+scaffold_acyclic_series_070,1,1514,378,0,0,0,145,0
+scaffold_acyclic_series_070,2,1514,378,0,0,0,132,0
+scaffold_acyclic_series_070,3,1514,378,0,0,0,156,0
+scaffold_acyclic_series_070,4,1514,378,0,0,0,145,0

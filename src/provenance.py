@@ -21,11 +21,11 @@ from . import paths
 # that script predates the rest of the project; they are not renamed here.
 ROUTE_LABELS = {
     "excel": "CID already in the EFSA file",
+    "cas": "CAS -> CID (PubChem registry-number lookup)",
     "nombre": "name -> CID (PubChem name lookup)",
 }
-# There is no CAS -> CID route. resolver.py never queries PubChem by CAS, and
-# the 3191 unresolved rows carry no CAS at all, so adding one would recover
-# nothing: those rows are name-only and the name lookup already failed on them.
+# Only routes actually present in the input CSV are shown. The resolver also
+# supports CAS lookup even when a particular frozen CSV has no rows from it.
 
 # Cache filenames written by resolver.py, same reasoning.
 CACHES = {

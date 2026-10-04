@@ -1,14 +1,23 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
-#     "genotox-food-migrants[notebook] @ git+https://github.com/E4CE-UA/genotox-food-migrants",
-#     "marimo",
+#     "lightgbm==4.7.0",
+#     "anywidget==0.11.0",
+#     "marimo==0.24.2",
+#     "matplotlib==3.11.2",
+#     "numpy==2.5.3",
+#     "openpyxl==3.1.5",
+#     "pandas==3.0.6",
+#     "pyarrow==25.0.1",
+#     "rdkit==2026.3.6",
+#     "scikit-learn==1.9.1",
+#     "scipy==1.18.1",
 # ]
 # ///
 
 import marimo
 
-__generated_with = "0.25.0"
+__generated_with = "0.24.2"
 app = marimo.App(width="medium")
 
 
@@ -34,7 +43,7 @@ def _():
     if ROOT is not None and str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from src import (
+    from genotox_food_migrants import (
         candidate_view,
         chemistry,
         data,
@@ -327,6 +336,7 @@ def _(data, external, labels, chemistry, models, np, paths):
         smiles_col="smiles",
         cache_path=paths.CACHE_STANDARDIZATION,
     )
+    _std = labels.aggregate_standardized(_std, rule="any_positive")
 
     _external_loaded = external.load(cache_path=paths.CACHE_STANDARDIZATION)
     _merged, _source_conflicts = external.merge(_std, _external_loaded)
@@ -380,9 +390,8 @@ def _(
 ):
     # Fixed, expensive layer: score every candidate once and find its closest
     # training compound. The applicability cutoff is applied later reactively.
-    _fps = chemistry.fingerprints(
-        gcms_candidates["smiles"], radius=2, n_bits=2048
-    )
+    _cand_std = chemistry.standardize_table(gcms_candidates[["smiles"]])
+    _fps = chemistry.fingerprints(_cand_std["smiles_std"], radius=2, n_bits=2048)
     _valid = [i for i, fp in enumerate(_fps) if fp is not None]
 
     _p = np.full(len(_fps), np.nan)
@@ -413,6 +422,9 @@ def _(
                 _nn_name[_i] = str(modelable[_name_col].iloc[_j])
 
     scored_base = gcms_candidates.assign(
+        smiles_std=_cand_std["smiles_std"].to_numpy(),
+        inchikey_std=_cand_std["inchikey_std"].to_numpy(),
+        structure_note=_cand_std["note"].fillna("").to_numpy(),
         p_genotox=_p,
         tanimoto_neighbour=_sim,
         nn_smiles=_nn_smiles,

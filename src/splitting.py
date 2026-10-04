@@ -56,3 +56,44 @@ def split_summary(y, scaffolds, seeds, frac_test: float = 0.2) -> pd.DataFrame:
             "scaffolds_test": len(set(np.asarray(scaffolds, dtype=object)[te])),
         })
     return pd.DataFrame(rows)
+
+
+def identity_groups(scaffolds, identities, fingerprints=None, acyclic_threshold=None):
+    """Stable ring-scaffold groups and explicit acyclic series robustness groups.
+
+    With no threshold, each acyclic parent is its own group. With a threshold,
+    connected components of acyclic ECFP4 similarities >= threshold stay together.
+    Components use structures only, without labels or fitted models. This is a
+    sensitivity protocol, not a universal definition of a chemical series.
+    """
+    scaffolds = list(scaffolds)
+    identities = list(identities)
+    if len(scaffolds) != len(identities) or len(set(identities)) != len(identities):
+        raise ValueError("One unique standardized identity is required per structure.")
+    groups = np.array([f"ring:{s}" if s else f"acyclic:{k}"
+                       for s, k in zip(scaffolds, identities)], dtype=object)
+    if acyclic_threshold is None:
+        return groups
+    if fingerprints is None or not 0 < acyclic_threshold <= 1:
+        raise ValueError("Fingerprints and a threshold in (0, 1] are required.")
+    from rdkit import DataStructs
+    acyclic = [i for i, s in enumerate(scaffolds) if not s]
+    parent = {i: i for i in acyclic}
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for position, i in enumerate(acyclic):
+        earlier = acyclic[:position]
+        similarities = DataStructs.BulkTanimotoSimilarity(fingerprints[i], [fingerprints[j] for j in earlier])
+        for j, similarity in zip(earlier, similarities):
+            if similarity >= acyclic_threshold:
+                parent[root(i)] = root(j)
+    components = defaultdict(list)
+    for i in acyclic:
+        components[root(i)].append(i)
+    for component in components.values():
+        name = "acyclic-series:" + min(identities[i] for i in component)
+        groups[component] = name
+    return groups

@@ -145,6 +145,51 @@ def aggregation_summary(agg: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["quantity", "n"])
 
 
+def aggregate_standardized(standardized: pd.DataFrame,
+                           rule: str = "any_positive",
+                           min_studies: int = 1) -> pd.DataFrame:
+    """Reconcile raw identities that map to the SAME supported organic parent.
+
+    Input is aggregate_by_substance followed by chemistry.standardize_table.
+    Sum the original conclusion counts, not the already aggregated binary
+    labels; majority/consensus must give the same result regardless of input
+    row order. Ambiguous handling has already been applied to those counts.
+    Unsupported structures stay in the input audit but never enter this table.
+    """
+    if rule not in RULES:
+        raise ValueError(f"rule must be one of {RULES}")
+    valid = standardized.loc[
+        standardized["ok"].fillna(False) & standardized["inchikey_std"].notna()
+    ].copy()
+    if valid.empty:
+        return valid.assign(n_raw_identities=pd.Series(dtype=int),
+                            raw_label_conflict=pd.Series(dtype=bool))
+    order = ["inchikey_std"] + (["inchikey"] if "inchikey" in valid else [])
+    valid = valid.sort_values(order, kind="stable")
+    g = valid.groupby("inchikey_std", sort=True)
+    # The representative metadata is deterministic; its y is overwritten below.
+    out = valid.drop_duplicates("inchikey_std").set_index("inchikey_std")
+    out[["n_studies", "n_pos", "n_neg", "n_amb"]] = g[
+        ["n_studies", "n_pos", "n_neg", "n_amb"]
+    ].sum()
+    out["n_raw_identities"] = g.size()
+    out["raw_label_conflict"] = g["y"].nunique().gt(1)
+    y = pd.Series(pd.NA, index=out.index, dtype="Float64")
+    if rule == "any_positive":
+        y[out["n_pos"] > 0] = 1.0
+        y[(out["n_pos"] == 0) & (out["n_neg"] > 0)] = 0.0
+    elif rule == "majority":
+        y[out["n_pos"] > out["n_neg"]] = 1.0
+        y[out["n_neg"] > out["n_pos"]] = 0.0
+    else:
+        y[(out["n_pos"] > 0) & (out["n_neg"] == 0)] = 1.0
+        y[(out["n_neg"] > 0) & (out["n_pos"] == 0)] = 0.0
+    y[out["n_studies"] < min_studies] = pd.NA
+    out["y"] = y
+    out["contradictory"] = (out["n_pos"] > 0) & (out["n_neg"] > 0)
+    return out.reset_index()
+
+
 def structure_attrition(df: pd.DataFrame, key: str = "CleanSubstanceName",
                         structure_col: str = "has_structure", id_col: str = "CAS",
                         rule: str = "any_positive", ambiguous: str = "exclude"):

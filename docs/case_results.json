@@ -1,0 +1,63 @@
+{
+  "results": {
+    "published_0.4": {
+      "n_retained": 20,
+      "n_evaluable": 14,
+      "conditional_score": 0.009110712355156177,
+      "covered_weight": 1.0,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    },
+    "published_0.5": {
+      "n_retained": 20,
+      "n_evaluable": 12,
+      "conditional_score": 0.009110712355156177,
+      "covered_weight": 1.0,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    },
+    "published_0.9": {
+      "n_retained": 20,
+      "n_evaluable": 0,
+      "conditional_score": null,
+      "covered_weight": 0.0,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    },
+    "same_formula_0.4": {
+      "n_retained": 20,
+      "n_evaluable": 14,
+      "conditional_score": 0.022485087667735406,
+      "covered_weight": 0.7000000000000002,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    },
+    "same_formula_0.5": {
+      "n_retained": 20,
+      "n_evaluable": 12,
+      "conditional_score": 0.024009768367890982,
+      "covered_weight": 0.6000000000000001,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    },
+    "same_formula_0.9": {
+      "n_retained": 20,
+      "n_evaluable": 0,
+      "conditional_score": null,
+      "covered_weight": 0.0,
+      "listed_formula_pool_size": 2484,
+      "retained_pool_fraction": 0.008051529790660225
+    }
+  },
+  "pool_audit": {
+    "n_sampled_assignments": 33,
+    "n_assignments": 33,
+    "median_retained_fraction": 0.02028397565922921,
+    "pool_definition": "listed PubChem formula pool, not all chemically possible identities",
+    "forced_assigned_inclusion": true,
+    "alternative_ei_scores_available": false,
+    "alternative_retention_indices_available": false
+  },
+  "assigned_in_training": false,
+  "model_fit_token": "c61364903626335294318bb5bff0e343ea7cccbc19d8d858a8fbdbd24b36be22"
+}

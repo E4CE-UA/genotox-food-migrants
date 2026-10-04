@@ -89,6 +89,12 @@ def decide(feat_p: pd.DataFrame, base: pd.DataFrame, threshold: float = 0.5,
                                 out["ttc_baseline"])
     out["crosses"] = out["ttc_model"] < out["ttc_baseline"]
     out["tightening_factor"] = out["ttc_baseline"] / out["ttc_model"]
+    unavailable = p.isna()
+    if "covered_weight" in out:
+        unavailable |= out["covered_weight"].le(0)
+    out["calls_genotoxic"] = out["calls_genotoxic"].astype("boolean").mask(unavailable)
+    out.loc[unavailable, ["ttc_model", "tightening_factor"]] = np.nan
+    out.loc[unavailable, "crosses"] = False
     return out
 
 
@@ -104,7 +110,8 @@ def crossing_summary(dec: pd.DataFrame) -> pd.DataFrame:
          f"limit drops to {TTC_GENOTOXIC} ug/day"),
         ("median tightening among those", float(cross["tightening_factor"].median())
          if len(cross) else float("nan"), "times stricter than before"),
-        ("unchanged", int(n - len(cross)), ""),
+        ("no model decision", int(dec["ttc_model"].isna().sum()), "no evaluable model score"),
+        ("unchanged", int((dec["ttc_model"].notna() & ~dec["crosses"]).sum()), ""),
     ]
     return pd.DataFrame(rows, columns=["quantity", "value", "meaning"])
 
