@@ -1,14 +1,14 @@
 {
   "package_version": "0.2.0",
   "release": {
-    "capsule_sha256": "25526fb2be9937d39ea59e5a686f4956ba73e067f94e3b18392468232396c337",
-    "capsule_bytes": 4613129,
+    "capsule_sha256": "582a3032731c392e636fefa118916c265537c42206fa73ac04420a671d2ffa50",
+    "capsule_bytes": 4613772,
     "n_members": 95,
-    "notebook_sha256": "d9c86b85e4d95b3dc72ceb75f580cf98ad1d87b609042c1df7f920f417e68e08",
+    "notebook_sha256": "5371d903242d94ea921b9ebbfbd5ee595f46f3387686a463cd9fca707378cd7e",
     "package_version": "0.2.0"
   },
   "checks": {
-    "unit_tests": 20,
+    "unit_tests": 22,
     "unit_tests_passed": true,
     "marimo_check_passed": true,
     "saved_validation_outputs": {
@@ -19,8 +19,15 @@
       "identities_disjoint": true,
       "calibration_groups_disjoint": true,
       "cutoff_selection_uses_training_only": true
-    }
+    },
+    "independent_AB_selection": true,
+    "reported_nan_crash_export": true,
+    "strict_json_all_entries": true,
+    "standalone_notebook_passed": true,
+    "browser_check_passed": true,
+    "strict_json_scenarios": "All 33 entries, every retained identity, two scenarios and Tc 0.4/0.8/0.9",
+    "strict_json_exports": 3960
   },
-  "change_scope": "Distribution cleanup and notebook assistance attribution; model functions, inputs and numerical results unchanged",
+  "change_scope": "Independent retained-identity A/B comparison and strict JSON missing-value handling; model functions and inputs unchanged",
   "independent_endpoint_validation": "not performed; claim remains identity-uncertainty demonstration"
 }

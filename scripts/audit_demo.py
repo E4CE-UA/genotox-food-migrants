@@ -18,6 +18,18 @@ def main():
                 'covered_weight','listed_formula_pool_size','retained_pool_fraction']}
             json.loads(demo.snapshot(view,provenance))
             assert 'Scenario average over retained structures' in build_demo_view().scenario_summary(view)
+    exports = 0
+    for feature_id in features['feature_id']:
+        for mode in ['published', 'same_formula']:
+            for cutoff in [.4, .8, .9]:
+                view = demo.evaluate(scored, features, feature_id, cutoff, mode)
+                for rank in view['candidates']['rank']:
+                    comparison = demo.compare_structure(view, f'{feature_id}:{int(rank)}')
+                    # Export every retained identity, including unavailable outputs.
+                    payload = json.loads(demo.snapshot(view, provenance, comparison))
+                    assert payload['setting']['feature_id'] == feature_id
+                    exports += 1
+    print(f'Validated {exports} strict JSON exports across all {len(features)} entries')
     report=dict(results=results,pool_audit=provenance['sampled_pool_audit'],
         assigned_in_training=bool(demo.evaluate(scored,features,demo.HOOK_FEATURE,.4,'published')['assigned']['in_training']),
         model_fit_token=provenance['model_fit_token'])

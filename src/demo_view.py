@@ -416,6 +416,21 @@ def build_demo_view():
             </div>'''
 
 
+        def comparison(view, molecule_a, molecule_b):
+            cards = []
+            for label, molecule in [('A', molecule_a), ('B', molecule_b)]:
+                row = molecule['selected']
+                key = molecule['selection_key']
+                name = escaped(structure_name(row, view['feature']))
+                training = 'Fitted training identity; not a held-out prediction.' if row['in_training'] else 'Query identity absent from fitted training set.'
+                cards.append(f'<section data-comparison-key="{key}"><h3>Molecule {label} · {name}</h3>' +
+                    choice_label(row, view, '', 'Comparison selection') +
+                    f'<p class="gx-small">{training}</p></section>')
+            same = '<p class="gx-note">A and B currently select the same structure.</p>' if molecule_a['selection_key'] == molecule_b['selection_key'] else ''
+            return ('<div class="gx gx-section" id="molecule-comparison">' +
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px">' + ''.join(cards) + '</div>' + same +
+                '<p class="gx-small">P(EFSA+) estimates an aggregated positive EFSA label conditional on each structure. Tc is similarity to its own nearest EFSA training neighbour, not similarity between A and B. IN/OUT follows the active cutoff. Missing outputs remain unavailable. Neither score establishes genotoxicity.</p></div>')
+
         def selection_banner(view, inspected):
             row = inspected['selected']
             f = view['feature']
@@ -817,7 +832,7 @@ def build_demo_view():
 
         from types import SimpleNamespace
         return SimpleNamespace(
-            CSS=CSS, header=header, feature_context=feature_context,
+            CSS=CSS, header=header, comparison=comparison, feature_context=feature_context,
             scenario_summary=scenario_summary, validation_panel=validation_panel,
             choices_intro=choices_intro, choice_label=choice_label,
             structure_name=structure_name, inspector=inspector, selection_banner=selection_banner,

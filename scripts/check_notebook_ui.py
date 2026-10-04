@@ -28,6 +28,20 @@ try:
         expect(summary).to_have_attribute('data-assumption','published')
         assert abs(float(summary.get_attribute('data-average'))-CASES['published_0.4']['conditional_score'])<1e-9
         report['assigned']=summary.inner_text()
+        comparison=page.locator('#molecule-comparison')
+        expect(comparison.locator('section').nth(0)).to_have_attribute('data-comparison-key','FCM2018-0014:1')
+        expect(comparison.locator('section').nth(1)).to_have_attribute('data-comparison-key','FCM2018-0014:2')
+        page.locator('button[aria-haspopup="dialog"]').nth(1).click()
+        page.get_by_role('option').filter(has_text='#07').click()
+        expect(comparison.locator('section').nth(0)).to_have_attribute('data-comparison-key','FCM2018-0014:7')
+        page.locator('button[aria-haspopup="dialog"]').nth(2).click()
+        page.get_by_role('option').filter(has_text='#20').click()
+        expect(comparison.locator('section').nth(1)).to_have_attribute('data-comparison-key','FCM2018-0014:20')
+        expect(summary).to_have_attribute('data-assumption','published')
+        assert abs(float(summary.get_attribute('data-average'))-CASES['published_0.4']['conditional_score'])<1e-9
+        comparison.scroll_into_view_if_needed();page.screenshot(path=str(HERE/'comparison_AB.png'))
+        report['independent_AB_in_assigned_mode']=True
+
         radios=page.get_by_role('radio');radios.nth(1).click()
         expect(summary).to_have_attribute('data-assumption','same_formula')
         expect(summary).to_have_attribute('data-n-evaluable','14')
@@ -72,7 +86,7 @@ try:
         for _ in range(30):slider.press('ArrowRight')
         expect(slider).to_have_attribute('aria-valuenow','0.4')
         expect(summary).to_have_attribute('data-n-evaluable','14')
-        page.locator('button[aria-haspopup="dialog"]').click()
+        page.locator('button[aria-haspopup="dialog"]').first.click()
         options=page.get_by_role('option')
         report['dropdown_options']=options.all_inner_texts()
         if options.count():
@@ -82,12 +96,13 @@ try:
         expect(summary).to_contain_text('FCM2018-0001')
         expect(page.locator('.gx-inspector')).to_contain_text('TRAINING IDENTITY')
         report['training_identity_notice_verified']=True
-        page.locator('button[aria-haspopup="dialog"]').click()
+        page.locator('button[aria-haspopup="dialog"]').first.click()
         page.get_by_role('option').filter(has_text='FCM2018-0002').click()
         expect(summary).to_contain_text('FCM2018-0002')
         expect(summary).to_contain_text('Standard confirmation is preserved')
         expect(page.locator('.gx-inspector')).to_have_attribute('data-selection-key','FCM2018-0002:1')
         report['confirmed']=summary.inner_text()
+        expect(comparison.locator('section').nth(0)).to_have_attribute('data-comparison-key','FCM2018-0002:1')
         with page.expect_download(timeout=20000) as download_info:
             page.get_by_text('Download the current results and source identifiers',exact=True).click()
         destination=HERE/'export_confirmed.json';download_info.value.save_as(destination)
@@ -95,6 +110,21 @@ try:
         assert [row['weight'] for row in payload['candidates']]==[1]+[0]*19
         assert payload['provenance']['model_fit_token']==report['model_fit_token']
         report['model_unchanged_by_controls']=True
+        page.locator('button[aria-haspopup="dialog"]').first.click()
+        page.get_by_role('option').filter(has_text='FCM2018-0003').click()
+        expect(summary).to_contain_text('FCM2018-0003')
+        slider.focus();slider.press('End')
+        for _ in range(10):slider.press('ArrowLeft')
+        expect(slider).to_have_attribute('aria-valuenow','0.8')
+        with page.expect_download(timeout=20000) as download_info:
+            page.get_by_text('Download the current results and source identifiers',exact=True).click()
+        destination=HERE/'export_FCM2018_0003.json';download_info.value.save_as(destination)
+        payload=json.loads(destination.read_text())
+        assert payload['setting']['feature_id']=='FCM2018-0003'
+        assert payload['provenance']['model_fit_token']==report['model_fit_token']
+        assert payload['comparison']['changes_scenario_weights'] is False
+        report['reported_nan_crash_case_exported']=True
+
         page.get_by_text('Methods, provenance & sensitivity details',exact=True).click()
         expect(page.get_by_role('heading',name='Reproduced internal validation · five outer seeds',exact=True)).to_be_visible()
         assert 'lgbm_raw_ensemble' in page.locator('.gx-details').last.inner_text()

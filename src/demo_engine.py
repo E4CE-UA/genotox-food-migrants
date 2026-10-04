@@ -194,6 +194,31 @@ def build_demo(notebook_source_file):
             selected = requested.iloc[0]
         return {'selected': selected, 'selection_key': f"{view['feature']['feature_id']}:{int(selected['rank'])}", 'selected_evaluable': bool(pd.notna(selected['score']) and selected['tanimoto_neighbour'] >= view['cutoff'])}
 
+    def json_safe(value):
+        """Preserve missing/nonfinite values as null, including nested provenance."""
+        if isinstance(value, dict):
+            return {key: json_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(item) for item in value]
+        if isinstance(value, np.generic):
+            return json_safe(value.item())
+        if value is None or value is pd.NA or value is pd.NaT:
+            return None
+        if isinstance(value, float) and not np.isfinite(value):
+            return None
+        return value
+
+    def compare_structure(view, selection_key):
+        """Select a retained candidate independently of the weight scenario."""
+        candidates = view['candidates']
+        keys = candidates['rank'].map(lambda rank: f"{view['feature']['feature_id']}:{int(rank)}")
+        rows = candidates.loc[keys.eq(selection_key)]
+        if rows.empty:
+            raise ValueError('Comparison identity is not retained for this entry')
+        row = rows.iloc[0]
+        return {'selected': row, 'selection_key': selection_key,
+                'selected_evaluable': bool(pd.notna(row['score']) and row['tanimoto_neighbour'] >= view['cutoff'])}
+
     def snapshot(view, provenance, inspected=None):
         """JSON export of the actual setting, structures, scores, and provenance."""
         inspected = inspect_structure(view) if inspected is None else inspected
@@ -230,7 +255,7 @@ def build_demo(notebook_source_file):
                 standard_confirmation='identity confirmation preserved in both scenarios; does not validate genotoxicity'),
             scenario_average_over_retained_structures=view['conditional_score'],
             structural_alerts=selected_alerts(selected), candidates=rows)
-        return json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
+        return json.dumps(json_safe(payload), ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
 
     def selected_alerts(row):
         from genotox_food_migrants import candidate_view, chemistry
@@ -240,4 +265,4 @@ def build_demo(notebook_source_file):
         hits = candidate_view.alert_hits(smiles) if parsed else []
         return {'representation': 'standardized model input' if valid else 'retained raw structure', 'smiles': smiles, 'parsed': bool(parsed), 'rule_count': len(chemistry.DNA_REACTIVE_ALERTS), 'matched_names': [h[0] for h in hits] if parsed else None, 'matched_atoms': sorted({a for h in hits for a in h[1]})}
     from types import SimpleNamespace
-    return SimpleNamespace(STUDY=STUDY, HOOK_FEATURE=HOOK_FEATURE, prepare=prepare, evaluate=evaluate, inspect_structure=inspect_structure, snapshot=snapshot, selected_alerts=selected_alerts)
+    return SimpleNamespace(STUDY=STUDY, HOOK_FEATURE=HOOK_FEATURE, prepare=prepare, evaluate=evaluate, inspect_structure=inspect_structure, compare_structure=compare_structure, snapshot=snapshot, selected_alerts=selected_alerts)

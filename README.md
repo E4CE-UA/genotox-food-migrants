@@ -16,6 +16,12 @@ The competition notebook includes exact inline dependency versions plus a checks
 
 `notebooks/genotox_marimo.py` runs the full exploratory analysis; its raw baselines and illustrative TTC section are separate from the calibrated competition demo. Run that notebook from the complete checkout, or install this frozen local package with `pip install '.[notebook]'`. No live PubChem requests are required for the default bundled case.
 
+## Choose molecules to compare
+
+The **Molecule A** and **Molecule B** selectors independently choose any retained structure for the current GC–MS entry, including alternatives while the identity scenario remains **Assigned structure**. Changing A or B updates the two drawings, structure-specific EFSA-label estimates and cutoff membership; it does not change scenario weights or refit the model. Each Tc is similarity to that molecule's own nearest EFSA training neighbour. The separate molecular inspector follows the molecule grid. Switching entries resets A/B to that entry's first two retained structures.
+
+JSON downloads preserve unavailable or nonfinite values as `null`, including missing nearest-neighbour fields. They include the selected A/B identity keys and all candidate results.
+
 ## Reproduce and review
 
 ```bash
@@ -30,7 +36,7 @@ The competition notebook includes exact inline dependency versions plus a checks
 .venv/bin/python notebooks/what_if_wrong_compound.py
 ```
 
-The model configuration, seeds, resolved environment, input/code hashes, per-split predictions, train/test and calibration identity lists, overlap audit and figures are under `docs/`. [Generated validation report](docs/VALIDATION.md). The table and case below are generated from those outputs, not copied performance claims. Browser checks cover changing identity scenario, cutoff, molecular inspection, confirmed identity, zero coverage and JSON export.
+The model configuration, seeds, resolved environment, input/code hashes, per-split predictions, train/test and calibration identity lists, overlap audit and figures are under `docs/`. [Generated validation report](docs/VALIDATION.md). The table and case below are generated from those outputs, not copied performance claims. Browser checks cover independent A/B selection, changing entries, identity scenario, cutoff, molecular inspection, confirmed identity, zero coverage and strict JSON export. `audit_demo.py` additionally checks every retained structure for all 33 entries at three cutoffs in both scenarios.
 
 <!-- generated-validation:start -->
 ## Generated internal performance

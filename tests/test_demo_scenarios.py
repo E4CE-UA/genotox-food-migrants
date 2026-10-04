@@ -78,6 +78,29 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(exported['provenance']['model_fit_token'],'fixed')
         self.assertIn('TRAINING IDENTITY',build_demo_view().inspector(view,inspected))
 
+    def test_export_missing_inspected_fields_and_nested_nonfinite_values(self):
+        self.scored.loc[2, ['nn_smiles', 'nn_name', 'nn_inchikey', 'smiles_std']] = np.nan
+        view = self.evaluate()
+        inspected = self.demo.inspect_structure(view, 'fixture:3')
+        exported = json.loads(self.demo.snapshot(view, {'nested': [np.float64(np.inf), {'missing': pd.NA}]}, inspected))
+        self.assertIsNone(exported['inspected_structure']['nn_smiles'])
+        self.assertIsNone(exported['inspected_structure']['estimated_efsa_label_probability'])
+        self.assertEqual(exported['provenance']['nested'], [None, {'missing': None}])
+
+    def test_free_comparison_in_assigned_mode_keeps_scenario_weights(self):
+        view = self.evaluate(assumption='published')
+        a = self.demo.compare_structure(view, 'fixture:2')
+        b = self.demo.compare_structure(view, 'fixture:3')
+        self.assertEqual(a['selected']['score'], .25)
+        self.assertFalse(b['selected_evaluable'])
+        self.assertEqual(view['candidates'].weight.tolist(), [1, 0, 0])
+        self.assertAlmostEqual(view['conditional_score'], .05)
+        html = build_demo_view().comparison(view, a, b)
+        self.assertIn('data-comparison-key="fixture:2"', html)
+        self.assertIn('NO OUTPUT', html)
+        with self.assertRaises(ValueError):
+            self.demo.compare_structure(view, 'other:2')
+
     def test_controls_do_not_fit_and_do_not_change_structure_scores(self):
         before=self.scored.score.copy()
         with patch.object(models,'fit_calibrated',side_effect=AssertionError('refit')), \
