@@ -1,7 +1,6 @@
 # /// script
-# requires-python = ">=3.12,<3.13"
+# requires-python = ">=3.12,<3.14"
 # dependencies = [
-#     "genotox-food-migrants @ https://github.com/E4CE-UA/genotox-food-migrants/archive/380f488349cfa0725b7e0ab499667493f6a6fad5.zip",
 #     "lightgbm==4.7.0",
 #     "anywidget==0.11.0",
 #     "marimo==0.24.2",
@@ -22,7 +21,7 @@
 # Review/edit its cells:
 # uvx --python 3.12 --from 'marimo==0.24.2' marimo edit --sandbox what_if_wrong_compound.py
 # Requires internet for the first dependency installation. Uses the fixed source
-# revision named in the script dependencies. Model fitting happens once per session.
+# source revision declared in the setup cell. Model fitting happens once per session.
 # Scientific scope: estimates of aggregated EFSA labels and hypothetical identity
 # scenarios over the retained FCM2018 structures. Source evidence is not invented.
 
@@ -37,8 +36,43 @@ def _():
     from pathlib import Path
     import marimo as mo
 
-    # Inline script dependencies install the exact reviewed code and data release.
-    # No embedded archive, local checkout, or user CSV files are needed.
+    # molab can start Python 3.13 and resolve imports before applying URL metadata.
+    # Load the reviewed source directly; scientific dependencies still come from PyPI.
+    import hashlib as _hashlib
+    import io as _io
+    import sys as _sys
+    import tempfile as _tempfile
+    import urllib.request as _request
+    import zipfile as _zipfile
+
+    _revision = "380f488349cfa0725b7e0ab499667493f6a6fad5"
+    _source_dir = Path(_tempfile.gettempdir()) / ("genotox_source_" + _revision)
+    _package = _source_dir / "genotox_food_migrants"
+    if not (_package / ".complete").exists():
+        _url = "https://github.com/E4CE-UA/genotox-food-migrants/archive/" + _revision + ".zip"
+        with _request.urlopen(_url, timeout=90) as _response:
+            _archive_bytes = _response.read()
+        if _hashlib.sha256(_archive_bytes).hexdigest() != "588d4b8f724b8d596d66067fc72f00a959d4de89f54065272ca11b94d5b5c6d0":
+            raise RuntimeError("Downloaded source checksum differs from the reviewed release.")
+        with _zipfile.ZipFile(_io.BytesIO(_archive_bytes)) as _archive:
+            # Extract only canonical Python modules and scientific data/reports.
+            for _member in _archive.infolist():
+                _parts = Path(_member.filename).parts[1:]
+                if len(_parts) < 2 or _member.is_dir():
+                    continue
+                if _parts[0] not in ("src", "data", "docs") or ".." in _parts:
+                    continue
+                _target_part = {"src": "", "data": "_data", "docs": "_validation"}[_parts[0]]
+                _target = _package / _target_part / Path(*_parts[1:])
+                _target.parent.mkdir(parents=True, exist_ok=True)
+                _target.write_bytes(_archive.read(_member))
+        (_package / ".complete").write_text(_revision)
+    if str(_source_dir) not in _sys.path:
+        _sys.path.insert(0, str(_source_dir))
+    # Confirm availability through importlib, without triggering molab's PyPI
+    # auto-installer for this private namespace.
+    import importlib as _importlib
+    _importlib.import_module("genotox_food_migrants")
     try:
         notebook_file = Path(__file__).resolve()
     except NameError:
@@ -63,7 +97,11 @@ def _(notebook_file):
         import pandas as pd
         from rdkit import Chem, rdBase, RDLogger
         from rdkit.Chem import rdMolDescriptors
-        from genotox_food_migrants import chemistry, data, labels, models, paths, public_features, splitting
+        import importlib
+        chemistry, data, labels, models, paths, public_features, splitting = (
+            importlib.import_module("genotox_food_migrants." + name)
+            for name in ("chemistry", "data", "labels", "models", "paths", "public_features", "splitting")
+        )
         STUDY = 'FCM2018'
         HOOK_FEATURE = 'FCM2018-0014'
         NIAS_NAMES = {'FCM2018-0010': 'Irganox 1010 degradation product', 'FCM2018-0004': 'BHT degradation product'}
@@ -306,7 +344,9 @@ def _(notebook_file):
             return json.dumps(json_safe(payload), ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
 
         def selected_alerts(row):
-            from genotox_food_migrants import candidate_view, chemistry
+            import importlib as _module_loader_1
+            candidate_view = _module_loader_1.import_module("genotox_food_migrants.candidate_view")
+            chemistry = _module_loader_1.import_module("genotox_food_migrants.chemistry")
             valid = pd.notna(row['score'])
             smiles = row['smiles_std'] if valid else row['smiles']
             parsed = isinstance(smiles, str) and Chem.MolFromSmiles(smiles) is not None
@@ -622,7 +662,8 @@ def _(notebook_file):
             @lru_cache(maxsize=4)
             def validation_plot(name):
                 import base64
-                from genotox_food_migrants import paths
+                import importlib as _module_loader_2
+                paths = _module_loader_2.import_module("genotox_food_migrants.paths")
                 path = paths.VALIDATION / name
                 if not path.exists():
                     return ''
@@ -1103,7 +1144,8 @@ def _(notebook_file):
 
             @lru_cache(maxsize=1800)
             def rule_hits(smiles):
-                from genotox_food_migrants import candidate_view
+                import importlib as _module_loader_3
+                candidate_view = _module_loader_3.import_module("genotox_food_migrants.candidate_view")
                 if not isinstance(smiles, str) or Chem.MolFromSmiles(smiles) is None:
                     return None
                 return candidate_view.alert_hits(smiles)
@@ -1119,7 +1161,8 @@ def _(notebook_file):
                 )
 
             def alert_panel(view, inspected):
-                from genotox_food_migrants import chemistry
+                import importlib as _module_loader_4
+                chemistry = _module_loader_4.import_module("genotox_food_migrants.chemistry")
                 row = inspected['selected']
                 details = alert_details(row)
                 names = details['names']
