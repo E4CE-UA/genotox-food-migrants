@@ -45,6 +45,44 @@ def _():
     import urllib.request as _request
     import zipfile as _zipfile
 
+    # molab may ignore the inline manifest when mirroring a GitHub notebook.
+    # Sync the scientific runtime before importing any chemistry/model modules.
+    import importlib.metadata as _metadata
+    import subprocess as _subprocess
+    import shutil as _shutil
+    _required = {
+        "lightgbm": "4.7.0", "anywidget": "0.11.0",
+        "matplotlib": "3.11.2", "numpy": "2.5.3", "openpyxl": "3.1.5",
+        "pandas": "3.0.6", "pyarrow": "25.0.1", "rdkit": "2026.3.6",
+        "scikit-learn": "1.9.1", "scipy": "1.18.1",
+    }
+    _mismatched = []
+    for _name, _version in _required.items():
+        try:
+            if _metadata.version(_name) != _version:
+                _mismatched.append(_name)
+        except _metadata.PackageNotFoundError:
+            _mismatched.append(_name)
+    if _mismatched:
+        _uv = _shutil.which("uv")
+        _installer = ([_uv, "pip", "install", "--python", _sys.executable]
+                      if _uv else [_sys.executable, "-m", "pip", "install"])
+        _result = _subprocess.run(
+            _installer + [name + "==" + version for name, version in _required.items()],
+            capture_output=True, text=True, timeout=300,
+        )
+        if _result.returncode:
+            raise RuntimeError("Scientific environment installation failed:\n" + _result.stderr[-6000:])
+        # An existing kernel can already hold older binary modules in memory.
+        _module_names = {"scikit-learn": "sklearn", "rdkit": "rdkit"}
+        _already_loaded = [name for name in _mismatched
+                           if _module_names.get(name, name) in _sys.modules]
+        if _already_loaded:
+            raise RuntimeError(
+                "The required versions are now installed. Restart the molab kernel once "
+                "and Run all to replace previously imported modules: " + ", ".join(_already_loaded)
+            )
+
     _revision = "380f488349cfa0725b7e0ab499667493f6a6fad5"
     _source_dir = Path(_tempfile.gettempdir()) / ("genotox_source_" + _revision)
     _package = _source_dir / "genotox_food_migrants"
