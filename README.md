@@ -1,10 +1,107 @@
 # What if the compound identity is wrong?
 
-A transparent compound-identity uncertainty study for food-contact migrant assignments, built with marimo, RDKit and LightGBM. The primary output is an **estimated probability of an aggregated positive EFSA label, conditional on a supported standardized structure**. A second output is a **scenario average over retained structures** meeting a visitor-selected similarity rule.
+When analysing substances that may migrate from food packaging, identifying a detected compound is not always straightforward. An assignment may be tentative, and different molecular structures can share the same molecular formula.
 
-These are different quantities. Formula alternatives are structural stress tests without individual EI spectra, retention indices, library-search scores or migration evidence. Equal weights are hypothetical; they are not measured identification confidence. The scenario average is not the probability that a GC–MS peak is genotoxic. This project is internally evaluated and does not establish chemical safety or an externally validated genotoxicity assay.
+This notebook explores a practical question: **how would a model’s estimate change if the assigned chemical structure were different?**
 
-## Run the complete notebook
+It uses published candy-wrapper assignments, chemical structures represented with RDKit, and a LightGBM classifier trained on genotoxicity conclusions from EFSA OpenFoodTox. The interface lets readers compare structures, inspect their similarity to the training data, and explore hypothetical identity scenarios.
+
+The notebook does not identify compounds from mass spectra or determine whether packaging is safe. Its purpose is to make the assumptions behind the calculations visible.
+
+## What the notebook shows
+
+For each eligible structure, the model estimates the probability of receiving a positive label under the project’s aggregation of EFSA genotoxicity conclusions. This is a prediction of the recorded label, conditional on the supplied structure—not a direct measurement of genotoxicity.
+
+The notebook also shows:
+
+- The nearest training molecule and its structural similarity.
+- Matches to ten selected structural-alert rules.
+- A comparison between two independently selected molecules.
+- An average of model estimates under a chosen identity scenario.
+- How that average changes when a similarity cutoff excludes structures.
+
+Structural alerts identify particular molecular patterns. A match is not proof of genotoxicity, and the absence of a match does not establish safety.
+
+## Data sources
+
+**EFSA OpenFoodTox** provides the genotoxicity conclusions used to construct the training labels. The reference export is version 6, including `Genotoxicity_KJ_2023.xlsx`: [DOI 10.5281/zenodo.8120114](https://doi.org/10.5281/zenodo.8120114).
+
+The published application case contains **33 compound assignments** curated from Tables 2–3 of:
+
+> Galmán Graíño et al. (2018). *GC-MS Screening Analysis for the Identification of Potential Migrants in Plastic and Paper-Based Candy Wrappers*. Polymers, 10(7), 802.
+
+[Read the source study](https://doi.org/10.3390/polym10070802).
+
+These are reported assignments, not 33 raw chromatograms or independent toxicity measurements. The study’s chromatogram figure provides analytical context; the notebook’s model estimates are new calculations.
+
+Alternative structures are sampled from listed PubChem structures with the same molecular formula. Their inclusion does not establish that they were present in the analysed packaging.
+
+## Example: a tentative oleic-acid assignment
+
+The default example starts with the study’s tentative oleic-acid assignment. Its structure-specific model estimate is approximately **0.91%**.
+
+The notebook then considers a retained set of **20 structures**: the assigned molecule and 19 sampled alternatives with the same molecular formula.
+
+| Scenario | Minimum similarity | Included weight | Scenario average |
+|---|---:|---:|---:|
+| Assigned structure only | 0.40 | 100% | 0.91% |
+| Equal weights across 20 structures | 0.40 | 70% | 2.25% |
+| Equal weights across 20 structures | 0.50 | 60% | 2.40% |
+| Equal weights across 20 structures | 0.90 | 0% | Unavailable |
+
+In the equal-weight scenario, 14 of the 20 structures meet the 0.40 similarity cutoff. Raising the cutoff to 0.50 leaves 12 included structures. The model remains fixed; the average changes because a different subset contributes to it.
+
+Two denominators must be distinguished:
+
+- **14/20** describes inclusion within the displayed scenario.
+- **20/2,484** describes the retained set relative to the listed PubChem formula pool.
+
+Neither quantity measures confidence in the chemical identification. The PubChem pool is also not an exhaustive list of every chemically possible identity.
+
+The alternatives have no individual supporting spectra, retention indices or library-search scores in this dataset. They are used to explore sensitivity to structural assumptions. Equal weighting is hypothetical, and the resulting average is not the probability that the detected chromatographic signal is genotoxic.
+
+When no weighted structure meets the cutoff, an average cannot be calculated. The interface therefore displays **Unavailable**, and the JSON export records `null`.
+
+## Using the controls
+
+Choose a published entry, then select **Molecule A** and **Molecule B** to compare retained structures. Each molecule has its own model estimate, nearest training neighbour and structural-alert results.
+
+The identity-scenario control changes the weights used in the average. Selecting a molecule for inspection or comparison does not change those weights.
+
+The similarity cutoff controls which structures contribute to the calculation. Similarity is measured using fingerprint-based Tanimoto similarity: higher values indicate more similar encoded structural features. The cutoff is an exploratory setting, not a validated confidence boundary.
+
+For assignments confirmed with reference standards in the source study, the notebook retains the assigned structure’s weight in both scenario modes. Structures already present in the training data are marked because their fitted estimates are not held-out evaluations.
+
+## Model preparation and evaluation
+
+Training conclusions are joined to chemical structures and aggregated by standardized parent structure. A parent receives a positive label if at least one included conclusion is positive.
+
+Eligible structures undergo a shared preparation procedure, including charge and tautomer standardization. The model uses radius-2, 2,048-bit Morgan fingerprints. Inputs outside the supported chemical scope are excluded; exclusion does not mean a negative genotoxicity result.
+
+The demonstration uses **1,892 standardized training parents**, including **130 positive labels**.
+
+Internal evaluation compares LightGBM, logistic regression and a prevalence baseline. It includes raw and sigmoid-calibrated models, with separate data used to fit the classifiers, fit calibration and evaluate predictions.
+
+Two splitting approaches are reported:
+
+- A scaffold-based protocol that separates ring scaffolds and groups acyclic parents individually.
+- A robustness protocol that also keeps closely related acyclic structures together.
+
+The second protocol addresses a limitation of the first: related compounds without ring scaffolds may otherwise appear on both sides of a split.
+
+Performance is assessed using ranking metrics, probability-error metrics and calibration plots. Calibration results are mixed across metrics and protocols; calibration does not guarantee reliable probabilities for every queried structure.
+
+Results are reported across five outer seeds. Their variation describes sensitivity to these internal splits and is not a confidence interval.
+
+See [the validation report](docs/VALIDATION.md) for numerical results, split definitions and figures.
+
+**Independent validation against compatible genotoxicity outcomes has not yet been performed.** Reference-standard confirmation of a compound’s identity in the candy-wrapper study does not validate its predicted genotoxicity label.
+
+The proposed next steps are documented in [the external-validation protocol](docs/EXTERNAL_VALIDATION.md).
+
+## Run the notebook
+
+From the repository root:
 
 ```bash
 python3.12 -m venv .venv
@@ -12,95 +109,25 @@ python3.12 -m venv .venv
 .venv/bin/marimo edit notebooks/what_if_wrong_compound.py
 ```
 
-The competition notebook includes exact inline dependency versions plus a checksummed, frozen local package/data/report snapshot generated by `scripts/build_release.py`. It works when replacing only the notebook in an older checkout. It does not follow a moving Git branch. All functions have a single canonical implementation in `src/`, imported as `genotox_food_migrants`. Set `GENOTOX_USE_SOURCE=1` in a checkout for development, then rebuild the notebook after editing modules or reports.
+The competition notebook is `notebooks/what_if_wrong_compound.py`. The broader exploratory analysis is available in `notebooks/genotox_marimo.py`.
 
-`notebooks/genotox_marimo.py` runs the full exploratory analysis; its raw baselines and illustrative TTC section are separate from the calibrated competition demo. Run that notebook from the complete checkout, or install this frozen local package with `pip install '.[notebook]'`. No live PubChem requests are required for the default bundled case.
+## Review and reproducibility
 
-## Choose molecules to compare
+The repository includes chemical-preparation code, label construction, model evaluation, input audits and regression tests. Outputs under `docs/` record model settings, data and code hashes, split identities, predictions and validation figures.
 
-The **Molecule A** and **Molecule B** selectors independently choose any retained structure for the current GC–MS entry, including alternatives while the identity scenario remains **Assigned structure**. Changing A or B updates the two drawings, structure-specific EFSA-label estimates and cutoff membership; it does not change scenario weights or refit the model. Each Tc is similarity to that molecule's own nearest EFSA training neighbour. The separate molecular inspector follows the molecule grid. Switching entries resets A/B to that entry's first two retained structures.
+Source auditing checks the bundled EFSA export against the reference release. Historical enrichment logs were not retained in full; the documentation distinguishes verified file contents from unavailable historical records.
 
-JSON downloads preserve unavailable or nonfinite values as `null`, including missing nearest-neighbour fields. They include the selected A/B identity keys and all candidate results.
+Useful starting points:
 
-## Reproduce and review
-
-```bash
-.venv/bin/python scripts/audit_source_release.py
-.venv/bin/python scripts/validate_calibration.py
-.venv/bin/python scripts/audit_demo.py
-.venv/bin/python scripts/render_readme.py
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python -m marimo check notebooks/what_if_wrong_compound.py notebooks/genotox_marimo.py notebooks/demo.py
-.venv/bin/python notebooks/genotox_marimo.py
-.venv/bin/python scripts/build_release.py
-.venv/bin/python notebooks/what_if_wrong_compound.py
-```
-
-The model configuration, seeds, resolved environment, input/code hashes, per-split predictions, train/test and calibration identity lists, overlap audit and figures are under `docs/`. [Generated validation report](docs/VALIDATION.md). The table and case below are generated from those outputs, not copied performance claims. Browser checks cover independent A/B selection, changing entries, identity scenario, cutoff, molecular inspection, confirmed identity, zero coverage and strict JSON export. `audit_demo.py` additionally checks every retained structure for all 33 entries at three cutoffs in both scenarios.
-
-<!-- generated-validation:start -->
-## Generated internal performance
-
-| Protocol / model | AP | Brier | Log loss | ECE |
-|---|---:|---:|---:|---:|
-| scaffold_identity / lgbm_raw_ensemble | 0.5145 [0.5140–0.6053] | 0.0545 [0.0442–0.0643] | 0.3484 [0.3054–0.4786] | 0.0537 [0.0479–0.0640] |
-| scaffold_identity / lgbm_sigmoid_ensemble | 0.5397 [0.5331–0.6048] | 0.0582 [0.0406–0.0596] | 0.2094 [0.1581–0.2217] | 0.0345 [0.0336–0.0346] |
-| scaffold_identity / logistic_sigmoid_ensemble | 0.4808 [0.4696–0.5516] | 0.0665 [0.0450–0.0676] | 0.2314 [0.1811–0.2621] | 0.0351 [0.0339–0.0395] |
-| scaffold_acyclic_series_070 / lgbm_raw_ensemble | 0.4661 [0.4574–0.5055] | 0.0616 [0.0572–0.0660] | 0.4558 [0.4046–0.4646] | 0.0617 [0.0533–0.0625] |
-| scaffold_acyclic_series_070 / lgbm_sigmoid_ensemble | 0.4655 [0.4622–0.5242] | 0.0577 [0.0535–0.0612] | 0.2173 [0.1999–0.2181] | 0.0199 [0.0198–0.0199] |
-| scaffold_acyclic_series_070 / logistic_sigmoid_ensemble | 0.3734 [0.3704–0.4800] | 0.0615 [0.0587–0.0658] | 0.2394 [0.2230–0.2410] | 0.0316 [0.0221–0.0333] |
-
-Median [Q1–Q3] across five outer seeds; internal evaluation. All individual results and figures: `docs/VALIDATION.md`.
-<!-- generated-validation:end -->
-
-## Demonstration: published oleic-acid assignment
-
-The publication supports the assigned identity and its recorded evidence category. The notebook's probabilities and alternative scenario are new calculations. The 20 retained structures comprise the forcibly included assignment plus 19 sampled same-formula alternatives. Coverage of these 20 structures is separate from their fraction of the **listed PubChem formula pool**, which is not all chemically possible identities. The retained fraction is not a probability of omitting the true identity, and this forced-inclusion set is not an unbiased full-pool Monte Carlo sample.
-
-<!-- generated-case:start -->
-Generated with 1,892 standardized training parents and 130 positive labels. Assigned identity in training: **False**.
-
-| Identity scenario | Tc rule | Included scenario weight | Structures meeting rule | Scenario average |
-|---|---:|---:|---:|---:|
-| Assigned only | 0.4 | 100% | 14/20 | 0.91% |
-| 20 equal-weight structures | 0.4 | 70% | 14/20 | 2.25% |
-| 20 equal-weight structures | 0.5 | 60% | 12/20 | 2.40% |
-| 20 equal-weight structures | 0.9 | 0% | 0/20 | Unavailable |
-
-Retained set: **20/2,484 listed formula structures (0.81%)**. All 33 sets are sampled; median retained fraction **2.03%**. This is distinct from coverage of the displayed scenario.
-<!-- generated-case:end -->
-
-The live comparison is immediately below the controls. Switching the scenario changes weights and the average. Clicking a molecule changes its structure, neighbour, alert matches and individual estimate. Moving Tc changes inclusion, coverage and the scenario average. These controls do not refit the model. Confirmed identities retain assigned-only weight in both modes. Training identities carry a visible **fitted estimate, not held-out assessment** notice. Zero included weight gives **Unavailable** and JSON `null`, because no average exists.
-
-## Chemical representation and label provenance
-
-The verified reference is [OpenFoodTox, DOI 10.5281/zenodo.8120114](https://doi.org/10.5281/zenodo.8120114), version 6, `Genotoxicity_KJ_2023.xlsx`. All 10,827 conclusion rows match the augmented XLSX and resolved CSV, in the same order, after documented Excel escape decoding. `data/source_exports/` freezes the official reference file; `docs/source_release_audit.json` records the published/downloaded MD5, SHA-256, comparison fields and joining audit. Historical download date and the original CAS/prepopulated-CID enrichment logs were not recorded; content equality is not proof of the original download event.
-
-The resolver uses prepopulated PubChem CID, then validated CAS, then decoded name to CID. A resolved name is not analytical identity confirmation. Conclusions are first audited by raw InChIKey, then original conclusion counts are merged by the standardized parent and the any-positive rule is reapplied. Table order never determines a label.
-
-Training and retained query structures share the same chemical scope and preparation: one carbon-containing parent, supported elements, RDKit cleanup, organic parent selection, uncharging, canonical tautomer, then radius-2 2,048-bit Morgan fingerprints. Unsupported metals/complexes, inorganic inputs and multiple organic fragments are excluded **before** fragment removal. Isolated Na/K counterions are supported. Cache entries include the standardization policy and RDKit version. Ineligible means outside model scope, not negative genotoxicity.
-
-## Validation scope
-
-The fair calibration comparison averages the same fitted base estimators before and after sigmoid calibration. A raw single LightGBM remains a separate reference; matched raw/calibrated logistic ensembles and a prevalence baseline are included. Five outer seeds hold out both classifier and calibrator training identities. Stable grouping avoids changes caused solely by reindexing acyclic compounds. The default splits keep ring scaffolds disjoint and group acyclic parents individually; related acyclic series can still cross. A second structure-only robustness protocol keeps acyclic ECFP4 Tc ≥ 0.70 connected components together. Identity, scaffold and group overlaps are checked and exported.
-
-AP (average precision), ROC area, Brier, log loss, ten-bin ECE and reliability curves are saved per split, with median, quartiles and range. Repeated seeds share test identities: their spread is not a confidence interval. Calibration evidence is mixed, and similarity filtering changes the evaluated population. Cutoff selection uses nested outer-training OOF predictions only, with a minimum retained fraction and positive count; its chosen cutoff is then evaluated on outer test identities. The interactive 0.40 remains exploratory, not a validated reliability or confidence boundary.
-
-**Independent compatible endpoint validation has not been performed.** The 22 standard-confirmed FCM assignments confirm identity, not an independent genotoxicity outcome. [External validation protocol](docs/EXTERNAL_VALIDATION.md) defines the harmonization and overlap checks required before a predictive-performance claim; the empty input template is not a dataset or validation result. Optional legacy mutagenicity inputs in the full analysis must not be represented as equivalent to the aggregated EFSA endpoint.
-
-## Assignment source and project layout
-
-The 33 local `FCM2018` rows are curated from Tables 2–3 of [Galmán Graíño et al. (2018), *Polymers* 10(7), 802](https://doi.org/10.3390/polym10070802). They are assignment rows, not 33 raw traces or independent migration measurements. Figure 1 is displayed with attribution and CC BY 4.0 license. Formulae are derived from assigned structures, not independent exact-mass evidence.
-
-| Path | Role |
+| Location | Contents |
 |---|---|
-| `notebooks/what_if_wrong_compound.py` | Complete frozen interactive competition notebook |
-| `notebooks/genotox_marimo.py` | Full exploratory analysis and raw baselines |
-| `src/demo_engine.py`, `demo_view.py`, `demo_widgets.py` | Shared demo calculations, interpretation and controls |
-| `src/chemistry.py`, `labels.py`, `models.py`, `splitting.py` | Common chemical preparation, labels, models and split policies |
-| `scripts/validate_calibration.py` | Fair paired validation and training-only cutoff selection |
-| `scripts/audit_source_release.py`, `audit_demo.py` | Reference-export and demonstration audits |
-| `scripts/build_release.py`, `render_readme.py` | Frozen notebook build and generated documentation |
-| `docs/` | Current reproducibility outputs and figures |
-| `tests/` | Chemical scope, calibration groups and notebook scenario contracts |
+| `notebooks/what_if_wrong_compound.py` | Interactive identity-sensitivity study |
+| `notebooks/genotox_marimo.py` | Broader exploratory analysis |
+| `src/` | Chemical preparation, labels, models and notebook support |
+| `scripts/` | Validation, auditing and documentation generation |
+| `docs/` | Methods, validation outputs and provenance |
+| `tests/` | Regression tests for calculations and supported inputs |
 
+## AI assistance
+
+Claude Opus 5 and GPT-6.1 Sol assisted with code review, regression tests and (some) presentation text. RDKit renders the molecular structures, and the notebook’s calculations produce the displayed model results.
